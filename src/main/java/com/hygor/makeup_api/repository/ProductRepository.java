@@ -3,6 +3,7 @@ package com.hygor.makeup_api.repository;
 import com.hygor.makeup_api.model.Product;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
@@ -34,4 +35,8 @@ public interface ProductRepository extends BaseEntityRepository<Product, Long> {
 
     Page<Product> findByBrandIgnoreCaseAndPriceBetweenAndRatingGreaterThanEqual(
             String brand, BigDecimal minPrice, BigDecimal maxPrice, Double minRating, Pageable pageable);
+
+@Query("SELECT p FROM Product p WHERE p.discountPrice IS NOT NULL AND p.discountPrice < p.price")
+Page<Product> findPromotions(Pageable pageable);
+
 }

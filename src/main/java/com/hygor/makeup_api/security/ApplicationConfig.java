@@ -21,17 +21,15 @@ public class ApplicationConfig {
 
     @Bean
     public UserDetailsService userDetailsService() {
+        // Agora retornamos o UserPrincipal, separando a Entidade da Segurança
         return username -> repository.findByEmail(username)
-                .map(user -> org.springframework.security.core.userdetails.User.builder()
-                        .username(user.getEmail())
-                        .password(user.getPassword())
-                        .roles(user.getRoles().stream().map(role -> role.getName().replace("ROLE_", "")).toArray(String[]::new))
-                        .build())
+                .map(UserPrincipal::new) 
                 .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
     }
 
     @Bean
     public AuthenticationProvider authenticationProvider() {
+        // O DaoAuthenticationProvider é o padrão para autenticação via Banco de Dados
         DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
         authProvider.setUserDetailsService(userDetailsService());
         authProvider.setPasswordEncoder(passwordEncoder());
@@ -45,6 +43,7 @@ public class ApplicationConfig {
 
     @Bean
     public PasswordEncoder passwordEncoder() {
+        // BCrypt é o padrão ouro para hashing de senhas
         return new BCryptPasswordEncoder();
     }
 }

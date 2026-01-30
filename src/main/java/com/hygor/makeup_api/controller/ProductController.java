@@ -19,17 +19,18 @@ public class ProductController {
     private final ProductService productService;
 
     @GetMapping
-    public ResponseEntity<Page<Product>> listProducts(
-            @RequestParam(required = false) String brand,
-            @RequestParam(required = false) BigDecimal minPrice,
-            @RequestParam(required = false) BigDecimal maxPrice,
-            Pageable pageable) {
-        
-        return ResponseEntity.ok(productService.getFilteredProducts(brand, minPrice, maxPrice, pageable));
-    }
+public ResponseEntity<Page<Product>> listProducts(
+        @RequestParam(required = false) String brand,
+        @RequestParam(required = false) BigDecimal minPrice,
+        @RequestParam(required = false) BigDecimal maxPrice,
+        @RequestParam(required = false) Double minRating,
+        Pageable pageable) {
+    
+    return ResponseEntity.ok(productService.getFilteredProducts(brand, minPrice, maxPrice, minRating, pageable));
+}
 
     @GetMapping("/{slug}")
     public ResponseEntity<Product> getBySlug(@PathVariable String slug) {
         return ResponseEntity.ok(productService.findBySlug(slug));
     }
-}
+} 
