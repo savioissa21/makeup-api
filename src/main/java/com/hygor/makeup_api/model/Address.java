@@ -4,10 +4,6 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.SQLRestriction;
 
-/**
- * Gerencia os endereços dos clientes.
- * Permite definir um endereço padrão para facilitar o checkout.
- */
 @Entity
 @Table(name = "addresses")
 @SQLRestriction("deleted = false")
@@ -35,6 +31,7 @@ public class Address extends BaseEntity {
 
     private String complement;
 
+    @Builder.Default // CORREÇÃO: Necessário para o Lombok não ignorar o valor padrão
     private boolean isDefault = false;
 
     @ManyToOne(fetch = FetchType.LAZY)

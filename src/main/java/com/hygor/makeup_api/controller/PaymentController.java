@@ -1,5 +1,6 @@
 package com.hygor.makeup_api.controller;
 
+import org.springframework.security.core.Authentication;
 import com.hygor.makeup_api.model.Order;
 import com.hygor.makeup_api.model.OrderStatus;
 import com.hygor.makeup_api.repository.OrderRepository;
@@ -7,6 +8,8 @@ import com.hygor.makeup_api.service.PaymentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+
 
 import java.util.Map;
 
@@ -40,5 +43,23 @@ public class PaymentController {
         }
 
         return ResponseEntity.ok().build();
+    }
+    // Adiciona este método dentro da classe PaymentController
+    @PostMapping("/pix")
+    public ResponseEntity<?> createPix(@RequestBody com.hygor.makeup_api.model.Payment payment, Authentication authentication) {
+        try {
+            // Chama o serviço que já criaste
+            var response = paymentService.createPixPayment(payment, authentication.getName());
+            
+            // Retorna os dados do Pix (incluindo o QR Code em base64 e o código para copiar)
+            return ResponseEntity.ok(Map.of(
+                "id", response.getId(),
+                "qr_code", response.getPointOfInteraction().getTransactionData().getQrCode(),
+                "qr_code_base64", response.getPointOfInteraction().getTransactionData().getQrCodeBase64(),
+                "status", response.getStatus()
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Erro ao gerar Pix: " + e.getMessage());
+        }
     }
 }

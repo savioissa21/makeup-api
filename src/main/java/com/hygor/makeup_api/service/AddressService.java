@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Objects; // Importante para comparação segura
 
 @Service
 public class AddressService extends BaseService<Address, AddressRepository> {
@@ -24,12 +25,10 @@ public class AddressService extends BaseService<Address, AddressRepository> {
 
     @Transactional
     public AddressResponse createAddress(AddressRequest request) {
-        // Busca o usuário logado pelo e-mail (do JWT) para garantir segurança
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         User currentUser = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
-        // Converte DTO para Entidade
         Address address = Address.builder()
                 .street(request.getStreet())
                 .number(request.getNumber())
@@ -41,20 +40,17 @@ public class AddressService extends BaseService<Address, AddressRepository> {
                 .user(currentUser)
                 .build();
 
-        // Se for o primeiro endereço ou marcado como padrão, ajusta os outros
         if (request.isDefault()) {
             handleDefaultAddress(currentUser.getEmail(), null);
         }
 
-        Address saved = repository.save(address);
-        return mapToResponse(saved);
+        return toResponse(repository.save(address));
     }
 
     @Transactional
     public AddressResponse setDefaultAddress(Long addressId) {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         
-        // Garante que o endereço pertence ao usuário logado (Segurança Máxima)
         Address address = repository.findById(addressId)
                 .filter(a -> a.getUser().getEmail().equals(email))
                 .orElseThrow(() -> new RuntimeException("Endereço não encontrado ou acesso negado"));
@@ -62,21 +58,23 @@ public class AddressService extends BaseService<Address, AddressRepository> {
         handleDefaultAddress(email, addressId);
         
         address.setDefault(true);
-        return mapToResponse(repository.save(address));
+        return toResponse(repository.save(address));
     }
 
     private void handleDefaultAddress(String email, Long currentAddressId) {
         List<Address> addresses = repository.findByUserEmail(email);
         addresses.forEach(a -> {
-            if (!a.getId().equals(currentAddressId)) {
+            // CORREÇÃO: Comparação segura de IDs para evitar NullPointerException
+            if (!Objects.equals(a.getId(), currentAddressId)) {
                 a.setDefault(false);
             }
         });
         repository.saveAll(addresses);
     }
 
-    // Método de mapeamento (Poderia ser um MapStruct no futuro)
-    private AddressResponse mapToResponse(Address address) {
+    // RENOMEADO: toResponse para seguir o padrão da boutique
+    public AddressResponse toResponse(Address address) {
+        if (address == null) return null;
         return AddressResponse.builder()
                 .id(address.getId())
                 .street(address.getStreet())

@@ -47,53 +47,52 @@ public class ProductService extends BaseService<Product, ProductRepository> {
                 .discountPrice(request.getDiscountPrice())
                 .stockQuantity(request.getStockQuantity())
                 .imagePrompt(request.getImagePrompt())
-                .rating(0.0) // Começa com nota zero
+                .rating(0.0) 
                 .slug(generateSlug(request.getName()))
                 .category(category)
                 .build();
 
         Product saved = repository.save(product);
         log.info("Produto criado com sucesso: {} (Slug: {})", saved.getName(), saved.getSlug());
-        return mapToResponse(saved);
+        return toResponse(saved); // Renomeado
     }
 
     /**
-     * Busca filtrada com paginação retornando DTOs.
+     * Busca filtrada com paginação.
      */
     @Transactional(readOnly = true)
-    public Page<ProductResponse> getFilteredProducts(String brand, BigDecimal minPrice, BigDecimal maxPrice, Double minRating, Pageable pageable) {
+    public Page<Product> getFilteredProducts(String brand, BigDecimal minPrice, BigDecimal maxPrice, Double minRating, Pageable pageable) {
         Double rating = (minRating == null) ? 0.0 : minRating;
         
-        Page<Product> products;
         if (brand != null && minPrice != null && maxPrice != null) {
-            products = repository.findByBrandIgnoreCaseAndPriceBetweenAndRatingGreaterThanEqual(brand, minPrice, maxPrice, rating, pageable);
-        } else {
-            // ... manter as outras lógicas de filtro do repository ...
-            products = repository.findAll(pageable);
+            return repository.findByBrandIgnoreCaseAndPriceBetweenAndRatingGreaterThanEqual(brand, minPrice, maxPrice, rating, pageable);
         }
-
-        return products.map(this::mapToResponse);
+        
+        return repository.findAll(pageable);
     }
 
     /**
-     * Atualiza apenas o estoque (uso administrativo).
+     * Atualiza apenas o estoque.
      */
     @Transactional
     public ProductResponse updateStock(Long id, ProductStockRequest request) {
         Product product = findActiveById(id);
         product.setStockQuantity(request.getStockQuantity());
-        return mapToResponse(repository.save(product));
-    }
-
-    @Transactional(readOnly = true)
-    public ProductResponse getProductBySlug(String slug) {
-        Product product = repository.findBySlug(slug)
-                .orElseThrow(() -> new RuntimeException("Produto não encontrado com o slug: " + slug));
-        return mapToResponse(product);
+        return toResponse(repository.save(product)); // Renomeado
     }
 
     /**
-     * Gerador de Slug Robusto (Trata acentos e caracteres especiais).
+     * RENOMEADO: Agora coincide com a chamada do Controller.
+     */
+    @Transactional(readOnly = true)
+    public ProductResponse findBySlug(String slug) {
+        Product product = repository.findBySlug(slug)
+                .orElseThrow(() -> new RuntimeException("Produto não encontrado com o slug: " + slug));
+        return toResponse(product);
+    }
+
+    /**
+     * Gerador de Slug.
      */
     private String generateSlug(String input) {
         String nowhitespace = WHITESPACE.matcher(input).replaceAll("-");
@@ -102,8 +101,10 @@ public class ProductService extends BaseService<Product, ProductRepository> {
         return slug.toLowerCase(Locale.ENGLISH);
     }
 
-    private ProductResponse mapToResponse(Product product) {
-        // Assume que ProductResponse tem os campos necessários
+    /**
+     * RENOMEADO e PUBLIC: Para ser usado no .map() do Controller.
+     */
+    public ProductResponse toResponse(Product product) {
         return ProductResponse.builder()
                 .id(product.getId())
                 .name(product.getName())
@@ -113,7 +114,7 @@ public class ProductService extends BaseService<Product, ProductRepository> {
                 .price(product.getPrice())
                 .discountPrice(product.getDiscountPrice())
                 .rating(product.getRating())
-                .categoryName(product.getCategory().getName())
+                .categoryName(product.getCategory() != null ? product.getCategory().getName() : "Sem Categoria")
                 .build();
     }
 }

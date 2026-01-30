@@ -10,7 +10,7 @@ import java.util.Optional;
 
 /**
  * Configuração para habilitar o preenchimento automático de datas e usuários.
- * Agora integrado com o Spring Security para capturar o usuário autenticado.
+ * Integrado com o Spring Security para capturar o usuário autenticado.
  */
 @Configuration
 @EnableJpaAuditing(auditorAwareRef = "auditorProvider")
@@ -18,14 +18,15 @@ public class JpaConfig {
 
     @Bean
     public AuditorAware<String> auditorProvider() {
-        return () => {
+        // CORREÇÃO: Java usa -> para lambdas, não =>
+        return () -> {
             // Obtém o objeto de autenticação do contexto do Spring Security
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
             // Verifica se o usuário está logado e se não é um acesso anônimo
             if (authentication == null || 
                 !authentication.isAuthenticated() || 
-                authentication.getPrincipal().equals("anonymousUser")) {
+                "anonymousUser".equals(authentication.getPrincipal())) {
                 return Optional.of("SYSTEM_BOOTSTRAP");
             }
 
