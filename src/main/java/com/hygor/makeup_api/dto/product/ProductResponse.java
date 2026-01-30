@@ -1,10 +1,14 @@
 package com.hygor.makeup_api.dto.product;
 
+import com.hygor.makeup_api.dto.brand.BrandResponse;
+import com.hygor.makeup_api.dto.category.CategoryResponse;
+import com.hygor.makeup_api.dto.variant.ProductVariantResponse;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
+import java.util.List;
 
 @Data
 @Builder
@@ -13,13 +17,14 @@ import java.math.BigDecimal;
 public class ProductResponse {
     private Long id;
     private String name;
-    private String brandName; // Nome correto para o Builder
-    private String brandLogo; // Para exibir o logo no frontend
     private String slug;
     private String description;
     private BigDecimal price;
     private BigDecimal discountPrice;
     private Double rating;
     private String imageUrl;
-    private String categoryName;
+    
+    private BrandResponse brand; 
+    private CategoryResponse category;
+    private List<ProductVariantResponse> variants;
 }

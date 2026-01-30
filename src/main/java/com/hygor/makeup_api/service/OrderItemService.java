@@ -2,6 +2,8 @@ package com.hygor.makeup_api.service;
 
 import com.hygor.makeup_api.dto.order.OrderItemResponse;
 import com.hygor.makeup_api.model.OrderItem;
+import com.hygor.makeup_api.model.Product;
+import com.hygor.makeup_api.model.ProductVariant;
 import com.hygor.makeup_api.repository.OrderItemRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,12 +40,17 @@ public class OrderItemService {
     }
 
     /**
-     * Mapeamento interno para garantir a integridade do DTO de resposta.
+     * Mapeamento interno refatorado para suportar Variações (SKUs).
+     * Garante que o nome do produto inclua a cor/tom para melhor UX.
      */
     private OrderItemResponse mapToResponse(OrderItem item) {
+        // Acessamos a variante e o produto mestre para compor o nome completo
+        ProductVariant variant = item.getVariant(); 
+        Product product = variant.getProduct();
+
         return OrderItemResponse.builder()
-                .productId(item.getProduct().getId())
-                .productName(item.getProduct().getName())
+                .variantId(variant.getId()) // Alterado para variantId para seguir o novo padrão de SKUs
+                .productName(product.getName() + " - " + variant.getName()) // Ex: "Batom Matte - Vermelho Real"
                 .quantity(item.getQuantity())
                 .unitPrice(item.getUnitPrice())
                 .subtotal(item.getUnitPrice().multiply(new BigDecimal(item.getQuantity())))

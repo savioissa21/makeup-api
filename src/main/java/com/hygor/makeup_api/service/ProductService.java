@@ -19,23 +19,35 @@ import java.math.BigDecimal;
 import java.text.Normalizer;
 import java.util.Locale;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
 public class ProductService extends BaseService<Product, ProductRepository> {
 
     private final CategoryRepository categoryRepository;
-    private final BrandRepository brandRepository; // Novo: Repositório de Marcas
+    private final BrandRepository brandRepository;
     
+    // Injeção dos serviços necessários para o toResponse
+    private final BrandService brandService;
+    private final CategoryService categoryService;
+    private final ProductVariantService variantService;
+
     private static final Pattern NONLATIN = Pattern.compile("[^\\w-]");
     private static final Pattern WHITESPACE = Pattern.compile("[\\s]");
 
-    public ProductService(ProductRepository repository, 
-                          CategoryRepository categoryRepository, 
-                          BrandRepository brandRepository) {
+    public ProductService(ProductRepository repository,
+                         CategoryRepository categoryRepository,
+                         BrandRepository brandRepository,
+                         BrandService brandService,
+                         CategoryService categoryService,
+                         ProductVariantService variantService) {
         super(repository);
         this.categoryRepository = categoryRepository;
         this.brandRepository = brandRepository;
+        this.brandService = brandService;
+        this.categoryService = categoryService;
+        this.variantService = variantService;
     }
 
     /**
@@ -48,19 +60,18 @@ public class ProductService extends BaseService<Product, ProductRepository> {
         Category category = categoryRepository.findById(request.getCategoryId())
                 .orElseThrow(() -> new RuntimeException("Categoria não encontrada com ID: " + request.getCategoryId()));
 
-        // Validação da nova entidade Brand
         Brand brand = brandRepository.findById(request.getBrandId())
                 .orElseThrow(() -> new RuntimeException("Marca não encontrada com ID: " + request.getBrandId()));
 
         Product product = Product.builder()
                 .name(request.getName())
-                .brand(brand) // Agora associa o objeto Brand
+                .brand(brand)
                 .description(request.getDescription())
                 .price(request.getPrice())
                 .discountPrice(request.getDiscountPrice())
                 .stockQuantity(request.getStockQuantity())
                 .imagePrompt(request.getImagePrompt())
-                .rating(0.0) 
+                .rating(0.0)
                 .slug(generateSlug(request.getName()))
                 .category(category)
                 .build();
@@ -70,19 +81,18 @@ public class ProductService extends BaseService<Product, ProductRepository> {
         return toResponse(saved);
     }
 
-    /**
-     * Busca filtrada utilizando os novos relacionamentos.
-     */
     @Transactional(readOnly = true)
-    public Page<ProductResponse> getFilteredProducts(String brandName, BigDecimal minPrice, BigDecimal maxPrice, Double minRating, Pageable pageable) {
+    public Page<ProductResponse> getFilteredProducts(String brandName, BigDecimal minPrice, BigDecimal maxPrice,
+                                                     Double minRating, Pageable pageable) {
         Double rating = (minRating == null) ? 0.0 : minRating;
-        
-        // Se houver filtro de marca, usamos a busca por nome ignore case
+
         if (brandName != null && minPrice != null && maxPrice != null) {
-            return repository.findByBrandNameIgnoreCaseAndPriceBetweenAndRatingGreaterThanEqual(brandName, minPrice, maxPrice, rating, pageable)
+            return repository
+                    .findByBrandNameIgnoreCaseAndPriceBetweenAndRatingGreaterThanEqual(brandName, minPrice, maxPrice,
+                            rating, pageable)
                     .map(this::toResponse);
         }
-        
+
         return repository.findAll(pageable).map(this::toResponse);
     }
 
@@ -109,21 +119,24 @@ public class ProductService extends BaseService<Product, ProductRepository> {
     }
 
     /**
-     * Converte a Entidade para DTO - Centralizado para facilitar manutenção.
+     * Converte a Entidade para DTO - Centralizado.
      */
     public ProductResponse toResponse(Product product) {
         return ProductResponse.builder()
                 .id(product.getId())
                 .name(product.getName())
-                .brandName(product.getBrand() != null ? product.getBrand().getName() : "Marca Desconhecida")
-                .brandLogo(product.getBrand() != null ? product.getBrand().getLogoUrl() : null)
                 .slug(product.getSlug())
                 .description(product.getDescription())
                 .price(product.getPrice())
                 .discountPrice(product.getDiscountPrice())
                 .rating(product.getRating())
                 .imageUrl(product.getImageUrl())
-                .categoryName(product.getCategory() != null ? product.getCategory().getName() : "Sem Categoria")
+                // Agora os serviços estão disponíveis para uso
+                .brand(brandService.mapToResponse(product.getBrand()))
+                .category(categoryService.mapToResponse(product.getCategory()))
+                .variants(product.getVariants().stream()
+                        .map(variantService::toResponse)
+                        .collect(Collectors.toList()))
                 .build();
     }
 

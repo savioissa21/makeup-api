@@ -13,8 +13,11 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
 
     /**
      * Lista todos os itens que pertencem a uma determinada encomenda.
+     * 
      * @param orderId Identificador da encomenda.
      * @return Lista de itens encontrados.
      */
     List<OrderItem> findByOrderId(Long orderId);
+
+    List<OrderItem> findByVariantId(Long variantId);
 }

@@ -34,7 +34,7 @@ public class BrandService extends BaseService<Brand, BrandRepository> {
         return mapToResponse(repository.save(brand));
     }
 
-    private BrandResponse mapToResponse(Brand brand) {
+    public BrandResponse mapToResponse(Brand brand) {
         return BrandResponse.builder()
                 .id(brand.getId())
                 .name(brand.getName())

@@ -24,20 +24,21 @@ import java.util.stream.Collectors;
 @Slf4j
 public class OrderService extends BaseService<Order, OrderRepository> {
 
-    private final ProductRepository productRepository;
+    // Substituído ProductRepository por ProductVariantRepository para focar em SKUs
+    private final ProductVariantRepository variantRepository;
     private final UserRepository userRepository;
     private final AddressRepository addressRepository;
     private final ShippingService shippingService;
     private final CartRepository cartRepository;
 
-    public OrderService(OrderRepository repository, 
-                        ProductRepository productRepository, 
-                        UserRepository userRepository,
-                        AddressRepository addressRepository,
-                        ShippingService shippingService,
-                        CartRepository cartRepository) {
+    public OrderService(OrderRepository repository,
+            ProductVariantRepository variantRepository,
+            UserRepository userRepository,
+            AddressRepository addressRepository,
+            ShippingService shippingService,
+            CartRepository cartRepository) {
         super(repository);
-        this.productRepository = productRepository;
+        this.variantRepository = variantRepository;
         this.userRepository = userRepository;
         this.addressRepository = addressRepository;
         this.shippingService = shippingService;
@@ -54,7 +55,7 @@ public class OrderService extends BaseService<Order, OrderRepository> {
         Address address = addressRepository.findById(request.getAddressId())
                 .filter(a -> a.getUser().getEmail().equals(email))
                 .orElseThrow(() -> new RuntimeException("Endereço de entrega inválido."));
-        
+
         ShippingOptionResponse shipping = shippingService.calculateBestOption(address.getZipCode());
 
         // 2. Inicia a Entidade Pedido
@@ -68,22 +69,25 @@ public class OrderService extends BaseService<Order, OrderRepository> {
 
         BigDecimal subtotal = BigDecimal.ZERO;
 
-        // 3. Processa Itens e Valida Stock
+        // 3. Processa Itens e Valida Stock por VARIANTE (Cor/Tom) 🛡️
         for (var itemRequest : request.getItems()) {
-            Product product = productRepository.findById(itemRequest.getProductId())
-                    .orElseThrow(() -> new RuntimeException("Produto não encontrado ID: " + itemRequest.getProductId()));
+            ProductVariant variant = variantRepository.findById(itemRequest.getVariantId())
+                    .orElseThrow(
+                            () -> new RuntimeException("Variação não encontrada ID: " + itemRequest.getVariantId()));
 
-            if (product.getStockQuantity() < itemRequest.getQuantity()) {
-                throw new RuntimeException("Estoque insuficiente para: " + product.getName());
+            if (variant.getStockQuantity() < itemRequest.getQuantity()) {
+                throw new RuntimeException("Estoque insuficiente para: " + variant.getProduct().getName() + " ("
+                        + variant.getName() + ")");
             }
 
-            product.setStockQuantity(product.getStockQuantity() - itemRequest.getQuantity());
-            productRepository.save(product);
+            // Baixa estoque da cor específica
+            variant.setStockQuantity(variant.getStockQuantity() - itemRequest.getQuantity());
+            variantRepository.save(variant);
 
             OrderItem orderItem = OrderItem.builder()
-                    .product(product)
+                    .variant(variant)
                     .quantity(itemRequest.getQuantity())
-                    .unitPrice(product.getPrice())
+                    .unitPrice(variant.getPrice()) // Preço da variante (pode ser diferente do produto mestre)
                     .order(order)
                     .build();
 
@@ -93,7 +97,7 @@ public class OrderService extends BaseService<Order, OrderRepository> {
 
         order.setSubtotal(subtotal);
 
-        // 4. Aplica Cupão do Carrinho (se existir e for válido) 🏷️ ✨
+        // 4. Aplica Cupão do Carrinho 🏷️ ✨
         BigDecimal discount = BigDecimal.ZERO;
         Cart cart = cartRepository.findByUserEmail(email).orElse(null);
         if (cart != null && cart.getCoupon() != null && cart.getCoupon().isValid()) {
@@ -104,7 +108,7 @@ public class OrderService extends BaseService<Order, OrderRepository> {
             order.setDiscountAmount(BigDecimal.ZERO);
         }
 
-        // 5. REGRA DE FRETE GRÁTIS: Aplicada aqui dentro! 🎁 ✨
+        // 5. REGRA DE FRETE GRÁTIS 🎁 ✨
         BigDecimal finalShippingFee = shipping.getPrice();
         BigDecimal freeShippingThreshold = new BigDecimal("200.00");
 
@@ -118,11 +122,11 @@ public class OrderService extends BaseService<Order, OrderRepository> {
 
         order.setShippingFee(finalShippingFee);
 
-        // 6. Cálculo Final: (Subtotal - Desconto) + Frete Corrigido 🛡️ 💎
+        // 6. Cálculo Final
         order.setTotalAmount(subtotal.subtract(discount).add(finalShippingFee));
 
         Order savedOrder = repository.save(order);
-        
+
         // 7. Limpa o carrinho após o sucesso 🧹
         if (cart != null) {
             cart.getItems().clear();
@@ -134,6 +138,26 @@ public class OrderService extends BaseService<Order, OrderRepository> {
         return toResponse(savedOrder);
     }
 
+    @Transactional
+    public OrderResponse cancelOrder(String orderNumber) {
+        Order order = findEntityByOrderNumber(orderNumber);
+
+        if (order.getStatus() == OrderStatus.SHIPPED || order.getStatus() == OrderStatus.DELIVERED) {
+            throw new RuntimeException("Não é possível cancelar um pedido já enviado.");
+        }
+
+        // Devolve o estoque para as variantes específicas
+        for (OrderItem item : order.getItems()) {
+            ProductVariant variant = item.getVariant();
+            variant.setStockQuantity(variant.getStockQuantity() + item.getQuantity());
+            variantRepository.save(variant);
+        }
+
+        order.setStatus(OrderStatus.CANCELLED);
+        return toResponse(repository.save(order));
+    }
+
+    // Métodos de busca mantidos conforme original, apenas garantindo consistência
     @Transactional(readOnly = true)
     public Order findEntityByOrderNumber(String orderNumber) {
         return repository.findByOrderNumber(orderNumber)
@@ -159,24 +183,6 @@ public class OrderService extends BaseService<Order, OrderRepository> {
     }
 
     @Transactional
-    public OrderResponse cancelOrder(String orderNumber) {
-        Order order = findEntityByOrderNumber(orderNumber);
-
-        if (order.getStatus() == OrderStatus.SHIPPED || order.getStatus() == OrderStatus.DELIVERED) {
-            throw new RuntimeException("Não é possível cancelar um pedido já enviado.");
-        }
-
-        for (OrderItem item : order.getItems()) {
-            Product product = item.getProduct();
-            product.setStockQuantity(product.getStockQuantity() + item.getQuantity());
-            productRepository.save(product);
-        }
-
-        order.setStatus(OrderStatus.CANCELLED);
-        return toResponse(repository.save(order));
-    }
-
-    @Transactional
     public void updateOrderStatusByPaymentId(String externalId, OrderStatus newStatus) {
         Order order = repository.findByPaymentExternalId(externalId)
                 .orElseThrow(() -> new RuntimeException("Pedido não encontrado para o pagamento: " + externalId));
@@ -185,16 +191,22 @@ public class OrderService extends BaseService<Order, OrderRepository> {
     }
 
     public OrderResponse toResponse(Order order) {
-        if (order == null) return null;
+        if (order == null)
+            return null;
 
         List<OrderItemResponse> itemResponses = order.getItems().stream()
-                .map(item -> OrderItemResponse.builder()
-                        .productId(item.getProduct().getId())
-                        .productName(item.getProduct().getName())
-                        .quantity(item.getQuantity())
-                        .unitPrice(item.getUnitPrice())
-                        .subtotal(item.getUnitPrice().multiply(new BigDecimal(item.getQuantity())))
-                        .build())
+                .map((OrderItem item) -> {
+                    ProductVariant variant = item.getVariant();
+                    Product product = variant.getProduct();
+
+                    return OrderItemResponse.builder()
+                            .variantId(variant.getId())
+                            .productName(product.getName() + " - " + variant.getName())
+                            .quantity(item.getQuantity())
+                            .unitPrice(item.getUnitPrice())
+                            .subtotal(item.getUnitPrice().multiply(new BigDecimal(item.getQuantity())))
+                            .build();
+                })
                 .collect(Collectors.toList());
 
         return OrderResponse.builder()

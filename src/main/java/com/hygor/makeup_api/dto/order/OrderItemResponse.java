@@ -7,9 +7,9 @@ import java.math.BigDecimal;
 @Data
 @Builder
 public class OrderItemResponse {
-    private Long productId;
+    private Long variantId;      // Alterado de productId para variantId
     private String productName;
     private Integer quantity;
-    private BigDecimal unitPrice; // Preço unitário no momento da compra
-    private BigDecimal subtotal;  // quantity * unitPrice
+    private BigDecimal unitPrice;
+    private BigDecimal subtotal;
 }

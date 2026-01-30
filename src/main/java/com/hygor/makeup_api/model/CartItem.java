@@ -23,8 +23,8 @@ public class CartItem {
     private Integer quantity;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "product_id", nullable = false)
-    private Product product;
+    @JoinColumn(name = "variant_id", nullable = false) // Alterado de product_id para variant_id
+    private ProductVariant variant; // Agora aponta para a cor/tamanho específico
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cart_id", nullable = false)

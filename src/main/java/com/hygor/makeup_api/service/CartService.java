@@ -20,22 +20,22 @@ import java.util.stream.Collectors;
 @Slf4j
 public class CartService extends BaseService<Cart, CartRepository> {
 
-    private final ProductRepository productRepository;
+    // Alterado de ProductRepository para ProductVariantRepository
+    private final ProductVariantRepository variantRepository;
     private final UserRepository userRepository;
     private final CartItemRepository cartItemRepository;
     private final CouponRepository couponRepository;
 
-    // Puxa o valor do frete grátis do application.properties 🛠️ ✨
     @Value("${boutique.shipping.free-threshold:200.00}")
     private BigDecimal freeShippingThreshold;
 
     public CartService(CartRepository repository, 
-                       ProductRepository productRepository, 
+                       ProductVariantRepository variantRepository, 
                        UserRepository userRepository, 
                        CartItemRepository cartItemRepository,
                        CouponRepository couponRepository) {
         super(repository);
-        this.productRepository = productRepository;
+        this.variantRepository = variantRepository;
         this.userRepository = userRepository;
         this.cartItemRepository = cartItemRepository;
         this.couponRepository = couponRepository;
@@ -46,26 +46,34 @@ public class CartService extends BaseService<Cart, CartRepository> {
         User user = getAuthenticatedUser();
         Cart cart = getOrCreateCart(user);
         
-        Product product = productRepository.findById(request.getProductId())
-                .orElseThrow(() -> new RuntimeException("Produto não encontrado"));
+        // 1. Busca a Variante específica (SKU) em vez do produto genérico
+        ProductVariant variant = variantRepository.findById(request.getVariantId())
+                .orElseThrow(() -> new RuntimeException("Variação de produto não encontrada"));
 
-        if (product.getStockQuantity() < request.getQuantity()) {
-            throw new RuntimeException("Quantidade solicitada indisponível em stock");
+        // 2. Validação de estoque baseada na variante escolhida
+        if (variant.getStockQuantity() < request.getQuantity()) {
+            throw new RuntimeException("Quantidade solicitada indisponível para esta cor/tom");
         }
 
+        // 3. Filtra por variante no carrinho para evitar duplicados
         CartItem cartItem = cart.getItems().stream()
-                .filter(item -> item.getProduct().getId().equals(product.getId()))
+                .filter(item -> item.getVariant().getId().equals(variant.getId()))
                 .findFirst()
-                .orElse(CartItem.builder().cart(cart).product(product).quantity(0).build());
+                .orElse(null);
 
-        cartItem.setQuantity(cartItem.getQuantity() + request.getQuantity());
-        
-        if (cartItem.getId() == null) {
+        if (cartItem != null) {
+            cartItem.setQuantity(cartItem.getQuantity() + request.getQuantity());
+        } else {
+            cartItem = CartItem.builder()
+                    .cart(cart)
+                    .variant(variant)
+                    .quantity(request.getQuantity())
+                    .build();
             cart.getItems().add(cartItem);
         }
 
         repository.save(cart);
-        log.info("Item {} adicionado ao carrinho de {}", product.getName(), user.getEmail());
+        log.info("Variação {} adicionada ao carrinho de {}", variant.getName(), user.getEmail());
         
         return mapToResponse(cart);
     }
@@ -118,16 +126,17 @@ public class CartService extends BaseService<Cart, CartRepository> {
     }
 
     /**
-     * MAPEAMENTO: Calcula subtotal, descontos e a Regra de Frete Grátis. 💎 ✨
+     * MAPEAMENTO: Refatorado para usar dados da Variant.
      */
     private CartResponse mapToResponse(Cart cart) {
         List<CartItemResponse> items = cart.getItems().stream()
                 .map(item -> CartItemResponse.builder()
-                        .productId(item.getProduct().getId())
-                        .productName(item.getProduct().getName())
+                        .variantId(item.getVariant().getProduct().getId()) // ID do pai para referência
+                        .productName(item.getVariant().getProduct().getName() + " - " + item.getVariant().getName()) // Nome completo
+                        .productImageUrl(item.getVariant().getImageUrl()) // Foto da variante específica
                         .quantity(item.getQuantity())
-                        .unitPrice(item.getProduct().getPrice())
-                        .subtotal(item.getProduct().getPrice().multiply(new BigDecimal(item.getQuantity())))
+                        .unitPrice(item.getVariant().getPrice()) // Preço da variante específica
+                        .subtotal(item.getVariant().getPrice().multiply(new BigDecimal(item.getQuantity())))
                         .build())
                 .collect(Collectors.toList());
 
@@ -135,14 +144,12 @@ public class CartService extends BaseService<Cart, CartRepository> {
                 .map(CartItemResponse::getSubtotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // 1. Cálculo do Desconto 🏷️
         BigDecimal discount = BigDecimal.ZERO;
         if (cart.getCoupon() != null && cart.getCoupon().isValid()) {
             discount = subtotal.multiply(BigDecimal.valueOf(cart.getCoupon().getDiscountPercentage() / 100));
         }
 
-        // 2. Lógica de Frete Grátis 🚚 💨
-        BigDecimal shippingFee = new BigDecimal("25.00"); // Frete padrão (Ex: PAC)
+        BigDecimal shippingFee = new BigDecimal("25.00");
         String shippingMethod = "Correios (SEDEX/PAC)";
         
         if (subtotal.compareTo(freeShippingThreshold) >= 0) {
@@ -157,7 +164,7 @@ public class CartService extends BaseService<Cart, CartRepository> {
                 .shippingFee(shippingFee)
                 .shippingMethod(shippingMethod)
                 .deliveryDays(7)
-                .totalAmount(subtotal.subtract(discount).add(shippingFee)) // Soma o frete ao total 💰
+                .totalAmount(subtotal.subtract(discount).add(shippingFee))
                 .appliedCoupon(cart.getCoupon() != null ? cart.getCoupon().getCode() : null)
                 .build();
     }

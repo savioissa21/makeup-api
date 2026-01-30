@@ -78,7 +78,7 @@ public class CategoryService extends BaseService<Category, CategoryRepository> {
         return slug.toLowerCase(Locale.ENGLISH);
     }
 
-    private CategoryResponse mapToResponse(Category category) {
+    public CategoryResponse mapToResponse(Category category) {
         return CategoryResponse.builder()
                 .id(category.getId())
                 .name(category.getName())
