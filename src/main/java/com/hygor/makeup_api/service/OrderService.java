@@ -44,16 +44,13 @@ public class OrderService extends BaseService<Order, OrderRepository> {
         this.cartRepository = cartRepository;
     }
 
-    /**
-     * CRIAÇÃO DE PEDIDO: Valida stock, frete e cupons. 💎 ✨
-     */
     @Transactional
     public OrderResponse createOrder(OrderRequest request) {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         User customer = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Cliente não encontrado."));
 
-        // 1. Busca o Endereço e calcula o Frete Real via Melhor Envio 🚚
+        // 1. Busca o Endereço e calcula o Frete Real 🚚
         Address address = addressRepository.findById(request.getAddressId())
                 .filter(a -> a.getUser().getEmail().equals(email))
                 .orElseThrow(() -> new RuntimeException("Endereço de entrega inválido."));
@@ -66,8 +63,6 @@ public class OrderService extends BaseService<Order, OrderRepository> {
                 .orderDate(LocalDateTime.now())
                 .status(OrderStatus.WAITING_PAYMENT)
                 .customer(customer)
-                .shippingMethod(shipping.getName()) // Salva o método (Ex: Sedex)
-                .shippingFee(shipping.getPrice())   // Salva o valor do frete
                 .items(new ArrayList<>())
                 .build();
 
@@ -82,7 +77,6 @@ public class OrderService extends BaseService<Order, OrderRepository> {
                 throw new RuntimeException("Estoque insuficiente para: " + product.getName());
             }
 
-            // Baixa de stock imediata 📉
             product.setStockQuantity(product.getStockQuantity() - itemRequest.getQuantity());
             productRepository.save(product);
 
@@ -105,18 +99,31 @@ public class OrderService extends BaseService<Order, OrderRepository> {
         if (cart != null && cart.getCoupon() != null && cart.getCoupon().isValid()) {
             discount = subtotal.multiply(BigDecimal.valueOf(cart.getCoupon().getDiscountPercentage() / 100));
             order.setDiscountAmount(discount);
-            // Incrementa o uso do cupão no sistema
             cart.getCoupon().setUsedCount(cart.getCoupon().getUsedCount() + 1);
         } else {
             order.setDiscountAmount(BigDecimal.ZERO);
         }
 
-        // 5. Cálculo Final: (Subtotal - Desconto) + Frete 🛡️ 💎
-        order.setTotalAmount(subtotal.subtract(discount).add(shipping.getPrice()));
+        // 5. REGRA DE FRETE GRÁTIS: Aplicada aqui dentro! 🎁 ✨
+        BigDecimal finalShippingFee = shipping.getPrice();
+        BigDecimal freeShippingThreshold = new BigDecimal("200.00");
+
+        if (subtotal.compareTo(freeShippingThreshold) >= 0) {
+            log.info("Parabéns! Pedido qualificado para Frete Grátis.");
+            finalShippingFee = BigDecimal.ZERO;
+            order.setShippingMethod(shipping.getName() + " (Grátis)");
+        } else {
+            order.setShippingMethod(shipping.getName());
+        }
+
+        order.setShippingFee(finalShippingFee);
+
+        // 6. Cálculo Final: (Subtotal - Desconto) + Frete Corrigido 🛡️ 💎
+        order.setTotalAmount(subtotal.subtract(discount).add(finalShippingFee));
 
         Order savedOrder = repository.save(order);
         
-        // 6. Limpa o carrinho para a próxima compra 🧹
+        // 7. Limpa o carrinho após o sucesso 🧹
         if (cart != null) {
             cart.getItems().clear();
             cart.setCoupon(null);
@@ -127,18 +134,12 @@ public class OrderService extends BaseService<Order, OrderRepository> {
         return toResponse(savedOrder);
     }
 
-    /**
-     * NOVO: Busca a entidade real para processamento interno (Pagamentos/Webhook). 🔐 ✨
-     */
     @Transactional(readOnly = true)
     public Order findEntityByOrderNumber(String orderNumber) {
         return repository.findByOrderNumber(orderNumber)
                 .orElseThrow(() -> new RuntimeException("Pedido não encontrado: " + orderNumber));
     }
 
-    /**
-     * NOVO: Permite ao PaymentController salvar o vínculo do pagamento no pedido. 🔗
-     */
     @Transactional
     public void saveOrder(Order order) {
         repository.save(order);
@@ -147,7 +148,7 @@ public class OrderService extends BaseService<Order, OrderRepository> {
     @Transactional(readOnly = true)
     public Page<OrderResponse> getMyOrders(Pageable pageable) {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
-        return repository.findByCustomerEmail(email, pageable).map(this::toResponse); //
+        return repository.findByCustomerEmail(email, pageable).map(this::toResponse);
     }
 
     @Transactional(readOnly = true)
@@ -165,7 +166,6 @@ public class OrderService extends BaseService<Order, OrderRepository> {
             throw new RuntimeException("Não é possível cancelar um pedido já enviado.");
         }
 
-        // Reversão de stock 🔄
         for (OrderItem item : order.getItems()) {
             Product product = item.getProduct();
             product.setStockQuantity(product.getStockQuantity() + item.getQuantity());
@@ -184,9 +184,6 @@ public class OrderService extends BaseService<Order, OrderRepository> {
         repository.save(order);
     }
 
-    /**
-     * MAPEADOR: Transforma Entidade em DTO com detalhes financeiros. 💎 ✨
-     */
     public OrderResponse toResponse(Order order) {
         if (order == null) return null;
 
@@ -204,9 +201,9 @@ public class OrderService extends BaseService<Order, OrderRepository> {
                 .orderNumber(order.getOrderNumber())
                 .orderDate(order.getOrderDate())
                 .status(order.getStatus())
-                .subtotal(order.getSubtotal())         // Detalhe financeiro 💰
-                .shippingFee(order.getShippingFee())   // Detalhe financeiro 🚚
-                .discountAmount(order.getDiscountAmount()) // Detalhe financeiro 🏷️
+                .subtotal(order.getSubtotal())
+                .shippingFee(order.getShippingFee())
+                .discountAmount(order.getDiscountAmount())
                 .totalAmount(order.getTotalAmount())
                 .shippingMethod(order.getShippingMethod())
                 .trackingCode(order.getTrackingCode())

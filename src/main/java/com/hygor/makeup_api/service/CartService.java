@@ -3,17 +3,10 @@ package com.hygor.makeup_api.service;
 import com.hygor.makeup_api.dto.cart.CartItemRequest;
 import com.hygor.makeup_api.dto.cart.CartResponse;
 import com.hygor.makeup_api.dto.cart.CartItemResponse;
-import com.hygor.makeup_api.model.Cart;
-import com.hygor.makeup_api.model.CartItem;
-import com.hygor.makeup_api.model.Coupon;
-import com.hygor.makeup_api.model.User;
-import com.hygor.makeup_api.model.Product;
-import com.hygor.makeup_api.repository.CartItemRepository;
-import com.hygor.makeup_api.repository.CartRepository;
-import com.hygor.makeup_api.repository.CouponRepository;
-import com.hygor.makeup_api.repository.ProductRepository;
-import com.hygor.makeup_api.repository.UserRepository;
+import com.hygor.makeup_api.model.*;
+import com.hygor.makeup_api.repository.*;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +24,10 @@ public class CartService extends BaseService<Cart, CartRepository> {
     private final UserRepository userRepository;
     private final CartItemRepository cartItemRepository;
     private final CouponRepository couponRepository;
+
+    // Puxa o valor do frete grátis do application.properties 🛠️ ✨
+    @Value("${boutique.shipping.free-threshold:200.00}")
+    private BigDecimal freeShippingThreshold;
 
     public CartService(CartRepository repository, 
                        ProductRepository productRepository, 
@@ -68,7 +65,7 @@ public class CartService extends BaseService<Cart, CartRepository> {
         }
 
         repository.save(cart);
-        log.info("Item {} adicionado ao carrinho do utilizador {}", product.getName(), user.getEmail());
+        log.info("Item {} adicionado ao carrinho de {}", product.getName(), user.getEmail());
         
         return mapToResponse(cart);
     }
@@ -105,7 +102,7 @@ public class CartService extends BaseService<Cart, CartRepository> {
         Cart cart = getOrCreateCart(user);
         cartItemRepository.deleteAll(cart.getItems());
         cart.getItems().clear();
-        cart.setCoupon(null); // Limpa o cupão também
+        cart.setCoupon(null);
         repository.save(cart);
     }
 
@@ -121,7 +118,7 @@ public class CartService extends BaseService<Cart, CartRepository> {
     }
 
     /**
-     * MÉTODO ÚNICO DE MAPEAMENTO: Calcula subtotal, desconto e total final. 💎 ✨
+     * MAPEAMENTO: Calcula subtotal, descontos e a Regra de Frete Grátis. 💎 ✨
      */
     private CartResponse mapToResponse(Cart cart) {
         List<CartItemResponse> items = cart.getItems().stream()
@@ -138,18 +135,29 @@ public class CartService extends BaseService<Cart, CartRepository> {
                 .map(CartItemResponse::getSubtotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        // 1. Cálculo do Desconto 🏷️
         BigDecimal discount = BigDecimal.ZERO;
-        
-        // Verifica se existe um cupão e se ele ainda é válido no momento do cálculo 🛡️
         if (cart.getCoupon() != null && cart.getCoupon().isValid()) {
             discount = subtotal.multiply(BigDecimal.valueOf(cart.getCoupon().getDiscountPercentage() / 100));
+        }
+
+        // 2. Lógica de Frete Grátis 🚚 💨
+        BigDecimal shippingFee = new BigDecimal("25.00"); // Frete padrão (Ex: PAC)
+        String shippingMethod = "Correios (SEDEX/PAC)";
+        
+        if (subtotal.compareTo(freeShippingThreshold) >= 0) {
+            shippingFee = BigDecimal.ZERO;
+            shippingMethod += " - Grátis ✨";
         }
 
         return CartResponse.builder()
                 .items(items)
                 .subtotal(subtotal)
                 .discountAmount(discount)
-                .totalAmount(subtotal.subtract(discount))
+                .shippingFee(shippingFee)
+                .shippingMethod(shippingMethod)
+                .deliveryDays(7)
+                .totalAmount(subtotal.subtract(discount).add(shippingFee)) // Soma o frete ao total 💰
                 .appliedCoupon(cart.getCoupon() != null ? cart.getCoupon().getCode() : null)
                 .build();
     }
