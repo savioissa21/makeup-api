@@ -27,6 +27,11 @@ public class Cart extends BaseEntity {
     @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<CartItem> items = new ArrayList<>();
 
+    // No ficheiro Cart.java
+@ManyToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "coupon_id")
+private Coupon coupon;
+
     /**
      * Helper para adicionar item e manter a consistência da relação bidirecional.
      */

@@ -3,6 +3,8 @@ package com.hygor.makeup_api.controller;
 import com.hygor.makeup_api.dto.cart.CartItemRequest;
 import com.hygor.makeup_api.dto.cart.CartResponse;
 import com.hygor.makeup_api.service.CartService;
+
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -30,4 +32,9 @@ public class CartController {
         cartService.clearCart();
         return ResponseEntity.noContent().build();
     }
+    @PostMapping("/apply-coupon")
+@Operation(summary = "Aplica um cupão", description = "Adiciona um código de desconto ao carrinho atual do cliente.")
+public ResponseEntity<CartResponse> applyCoupon(@RequestParam String code) {
+    return ResponseEntity.ok(cartService.applyCoupon(code));
+}
 }
