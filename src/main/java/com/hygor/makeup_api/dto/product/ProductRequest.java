@@ -11,8 +11,8 @@ public class ProductRequest {
     @NotBlank(message = "O nome do produto é obrigatório")
     private String name;
 
-    @NotBlank(message = "A marca é obrigatória")
-    private String brand;
+    @NotNull(message = "O ID da marca é obrigatório")
+    private Long brandId;
 
     private String description;
 
@@ -27,7 +27,7 @@ public class ProductRequest {
     @PositiveOrZero
     private Integer stockQuantity;
 
-    private String imagePrompt; // Usado para a IA gerar a imagem real
+    private String imagePrompt;
 
     @NotNull(message = "O ID da categoria é obrigatório")
     private Long categoryId;

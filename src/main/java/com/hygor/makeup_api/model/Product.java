@@ -7,11 +7,12 @@ import java.math.BigDecimal;
 
 /**
  * Entidade de Produto otimizada para e-commerce de luxo.
- * Utiliza BigDecimal para precisão financeira e slugs para URLs amigáveis (SEO).
+ * Utiliza BigDecimal para precisão financeira e slugs para URLs amigáveis
+ * (SEO).
  */
 @Entity
 @Table(name = "products", indexes = {
-    @Index(name = "idx_product_slug", columnList = "slug", unique = true)
+        @Index(name = "idx_product_slug", columnList = "slug", unique = true)
 })
 @SQLRestriction("deleted = false")
 @Getter
@@ -23,9 +24,6 @@ public class Product extends BaseEntity {
 
     @Column(nullable = false)
     private String name;
-
-    @Column(nullable = false)
-    private String brand; // Novo campo adicionado
 
     @Column(nullable = false, unique = true)
     private String slug;
@@ -56,4 +54,8 @@ public class Product extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id", nullable = false)
     private Category category;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "brand_id", nullable = false)
+    private Brand brand;
 }

@@ -29,14 +29,18 @@ public interface ProductRepository extends BaseEntityRepository<Product, Long> {
 
     Page<Product> findByPriceBetween(BigDecimal minPrice, BigDecimal maxPrice, Pageable pageable);
 
-    Page<Product> findByBrandIgnoreCaseAndPriceBetween(String brand, BigDecimal minPrice, BigDecimal maxPrice, Pageable pageable);
+    Page<Product> findByBrandIgnoreCaseAndPriceBetween(String brand, BigDecimal minPrice, BigDecimal maxPrice,
+            Pageable pageable);
 
     Page<Product> findByRatingGreaterThanEqual(Double minRating, Pageable pageable);
 
     Page<Product> findByBrandIgnoreCaseAndPriceBetweenAndRatingGreaterThanEqual(
             String brand, BigDecimal minPrice, BigDecimal maxPrice, Double minRating, Pageable pageable);
 
-@Query("SELECT p FROM Product p WHERE p.discountPrice IS NOT NULL AND p.discountPrice < p.price")
-Page<Product> findPromotions(Pageable pageable);
+    Page<Product> findByBrandNameIgnoreCaseAndPriceBetweenAndRatingGreaterThanEqual(
+            String brandName, BigDecimal minPrice, BigDecimal maxPrice, Double minRating, Pageable pageable);
+
+    @Query("SELECT p FROM Product p WHERE p.discountPrice IS NOT NULL AND p.discountPrice < p.price")
+    Page<Product> findPromotions(Pageable pageable);
 
 }
