@@ -24,6 +24,9 @@ public class Product extends BaseEntity {
     @Column(nullable = false)
     private String name;
 
+    @Column(nullable = false)
+    private String brand; // Novo campo adicionado
+
     @Column(nullable = false, unique = true)
     private String slug;
 

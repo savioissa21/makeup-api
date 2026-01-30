@@ -6,6 +6,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.math.BigDecimal; 
 
 @Service
 public class ProductService extends BaseService<Product, ProductRepository> {
@@ -20,9 +21,18 @@ public class ProductService extends BaseService<Product, ProductRepository> {
                 .orElseThrow(() -> new RuntimeException("Produto não encontrado com o slug: " + slug));
     }
 
-    @Transactional(readOnly = true)
-    public Page<Product> searchByName(String name, Pageable pageable) {
-        return repository.findByNameContainingIgnoreCase(name, pageable);
+ @Transactional(readOnly = true)
+    public Page<Product> getFilteredProducts(String brand, BigDecimal minPrice, BigDecimal maxPrice, Double minRating, Pageable pageable) {
+        // Define um valor padrão se o rating for nulo
+        Double rating = (minRating == null) ? 0.0 : minRating;
+
+        if (brand != null && minPrice != null && maxPrice != null) {
+            return repository.findByBrandIgnoreCaseAndPriceBetweenAndRatingGreaterThanEqual(brand, minPrice, maxPrice, rating, pageable);
+        } else if (minRating != null) {
+            return repository.findByRatingGreaterThanEqual(rating, pageable);
+        }
+        
+        return repository.findAll(pageable);
     }
 
     @Transactional

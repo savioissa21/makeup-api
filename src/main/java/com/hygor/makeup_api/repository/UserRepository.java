@@ -1,7 +1,6 @@
 package com.hygor.makeup_api.repository;
 
 import com.hygor.makeup_api.model.User;
-import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 import java.util.Optional;
 
@@ -10,7 +9,7 @@ import java.util.Optional;
  * Fundamental para o processo de autenticação do Spring Security.
  */
 @Repository
-public interface UserRepository extends JpaRepository<User, Long> {
+public interface UserRepository extends BaseEntityRepository<User, Long> {
 
     // Busca um usuário pelo e-mail (usado no login)
     Optional<User> findByEmail(String email);

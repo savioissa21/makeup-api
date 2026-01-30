@@ -1,8 +1,9 @@
 package com.hygor.makeup_api.service;
 
-import com.hygor.makeup_api.config.JwtService;
 import com.hygor.makeup_api.model.User;
 import com.hygor.makeup_api.repository.UserRepository;
+import com.hygor.makeup_api.security.JwtService;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;

@@ -1,7 +1,6 @@
 package com.hygor.makeup_api.repository;
 
 import com.hygor.makeup_api.model.Role;
-import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 import java.util.Optional;
 
@@ -10,7 +9,7 @@ import java.util.Optional;
  * Define as regras de acesso (ADMIN, CUSTOMER).
  */
 @Repository
-public interface RoleRepository extends JpaRepository<Role, Long> {
+public interface RoleRepository extends BaseEntityRepository<Role, Long> {
 
     /**
      * Procura uma regra pelo seu nome único.

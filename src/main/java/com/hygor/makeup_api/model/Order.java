@@ -47,7 +47,3 @@ public class Order extends BaseEntity {
     @JoinColumn(name = "payment_id")
     private Payment payment;
 }
-
-enum OrderStatus {
-    WAITING_PAYMENT, PROCESSING, SHIPPED, DELIVERED, CANCELLED
-}

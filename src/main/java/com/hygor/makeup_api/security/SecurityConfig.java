@@ -1,4 +1,4 @@
-package com.hygor.makeup_api.config;
+package com.hygor.makeup_api.security;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;

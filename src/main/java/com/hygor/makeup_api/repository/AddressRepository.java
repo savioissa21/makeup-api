@@ -1,7 +1,6 @@
 package com.hygor.makeup_api.repository;
 
 import com.hygor.makeup_api.model.Address;
-import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 import java.util.Optional;
 import java.util.List;
@@ -10,7 +9,7 @@ import java.util.List;
  * Interface de acesso a dados para endereços de envio e faturação.
  */
 @Repository
-public interface AddressRepository extends JpaRepository<Address, Long> {
+public interface AddressRepository extends BaseEntityRepository<Address, Long> {
 
     /**
      * Lista todos os endereços guardados de um utilizador específico.

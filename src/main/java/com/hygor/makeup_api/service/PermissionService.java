@@ -10,7 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
  * Permite criar e procurar permissões que definem o acesso a funcionalidades específicas.
  */
 @Service
-public class PermissionService extends BaseEntityService<Permission, PermissionRepository> {
+public class PermissionService extends BaseService<Permission, PermissionRepository> {
 
     public PermissionService(PermissionRepository repository) {
         super(repository);

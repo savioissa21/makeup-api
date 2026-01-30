@@ -1,4 +1,4 @@
-package com.hygor.makeup_api.config;
+package com.hygor.makeup_api.security;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
