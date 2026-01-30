@@ -20,4 +20,6 @@ public interface OrderRepository extends BaseEntityRepository<Order, Long> {
 
     // Usado pelo Admin para buscar pedidos por status (Financeiro/Logística)
     Page<Order> findByStatus(String status, Pageable pageable);
+
+    Optional<Order> findByPaymentExternalId(String externalId);
 }

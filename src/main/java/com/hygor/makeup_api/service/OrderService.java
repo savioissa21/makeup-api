@@ -8,6 +8,10 @@ import com.hygor.makeup_api.repository.OrderRepository;
 import com.hygor.makeup_api.repository.ProductRepository;
 import com.hygor.makeup_api.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
+
+// CORREÇÃO DOS IMPORTS: Use sempre org.springframework.data.domain
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,16 +37,31 @@ public class OrderService extends BaseService<Order, OrderRepository> {
     }
 
     /**
-     * Cria um novo pedido com validações robustas de estoque, preço e segurança.
+     * Retorna o histórico de pedidos do utilizador logado em formato DTO.
      */
+    @Transactional(readOnly = true)
+    public Page<OrderResponse> getMyOrders(Pageable pageable) {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        // O .map(this::toResponse) garante que retornamos DTOs, não Entidades
+        return repository.findByCustomerEmail(email, pageable).map(this::toResponse);
+    }
+
+    /**
+     * Busca um pedido específico pelo número em formato DTO.
+     */
+    @Transactional(readOnly = true)
+    public OrderResponse getByOrderNumber(String orderNumber) {
+        return repository.findByOrderNumber(orderNumber)
+                .map(this::toResponse)
+                .orElseThrow(() -> new RuntimeException("Pedido não encontrado: " + orderNumber));
+    }
+
     @Transactional
     public OrderResponse createOrder(OrderRequest request) {
-        // 1. Identifica o cliente logado via Token JWT (Segurança Máxima)
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         User customer = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Cliente não encontrado com o e-mail: " + email));
 
-        // 2. Inicializa a entidade Order com dados básicos
         Order order = Order.builder()
                 .orderNumber("ORD-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase())
                 .orderDate(LocalDateTime.now())
@@ -53,21 +72,17 @@ public class OrderService extends BaseService<Order, OrderRepository> {
 
         BigDecimal total = BigDecimal.ZERO;
 
-        // 3. Processa cada item do pedido vindo do DTO
         for (var itemRequest : request.getItems()) {
             Product product = productRepository.findById(itemRequest.getProductId())
                     .orElseThrow(() -> new RuntimeException("Produto não encontrado ID: " + itemRequest.getProductId()));
 
-            // Validação de Stock: Garante que a boutique pode entregar o prometido
             if (product.getStockQuantity() < itemRequest.getQuantity()) {
                 throw new RuntimeException("Estoque insuficiente para o produto: " + product.getName());
             }
 
-            // Baixa de Stock: Atualiza o inventário imediatamente
             product.setStockQuantity(product.getStockQuantity() - itemRequest.getQuantity());
             productRepository.save(product);
 
-            // Criação do item do pedido com Segurança de Preço (Usa o valor atual do banco)
             OrderItem orderItem = OrderItem.builder()
                     .product(product)
                     .quantity(itemRequest.getQuantity())
@@ -77,7 +92,6 @@ public class OrderService extends BaseService<Order, OrderRepository> {
 
             order.getItems().add(orderItem);
 
-            // Soma ao total do pedido (unitPrice do banco * quantidade)
             BigDecimal itemTotal = orderItem.getUnitPrice().multiply(new BigDecimal(orderItem.getQuantity()));
             total = total.add(itemTotal);
         }
@@ -86,13 +100,26 @@ public class OrderService extends BaseService<Order, OrderRepository> {
         Order savedOrder = repository.save(order);
         
         log.info("Pedido {} criado com sucesso para o cliente {}", savedOrder.getOrderNumber(), email);
-        return mapToResponse(savedOrder);
+        return toResponse(savedOrder);
+    }
+
+    @Transactional
+    public void updateOrderStatusByPaymentId(String externalId, OrderStatus newStatus) {
+        // Busca direta via ID do Mercado Pago
+        Order order = repository.findByPaymentExternalId(externalId)
+                .orElseThrow(() -> new RuntimeException("Pedido não encontrado para o pagamento: " + externalId));
+        
+        order.setStatus(newStatus);
+        repository.save(order);
+        log.info("Pedido {} atualizado para o status {}", order.getOrderNumber(), newStatus);
     }
 
     /**
-     * Mapeia a Entidade Order para o DTO OrderResponse.
+     * Mapeador público para seguir o padrão da boutique.
      */
-    private OrderResponse mapToResponse(Order order) {
+    public OrderResponse toResponse(Order order) {
+        if (order == null) return null;
+
         List<OrderItemResponse> itemResponses = order.getItems().stream()
                 .map(item -> OrderItemResponse.builder()
                         .productId(item.getProduct().getId())

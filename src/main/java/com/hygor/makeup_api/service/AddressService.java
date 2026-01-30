@@ -86,4 +86,11 @@ public class AddressService extends BaseService<Address, AddressRepository> {
                 .isDefault(address.isDefault())
                 .build();
     }
+    @Transactional(readOnly = true)
+public List<AddressResponse> getMyAddresses() {
+    String email = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
+    return repository.findByUserEmail(email).stream()
+            .map(this::toResponse)
+            .collect(java.util.stream.Collectors.toList());
+}
 }

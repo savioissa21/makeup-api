@@ -1,15 +1,12 @@
 package com.hygor.makeup_api.controller;
 
-import org.springframework.security.core.Authentication;
-import com.hygor.makeup_api.model.Order;
 import com.hygor.makeup_api.model.OrderStatus;
-import com.hygor.makeup_api.repository.OrderRepository;
+import com.hygor.makeup_api.service.OrderService;
 import com.hygor.makeup_api.service.PaymentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-
-
 
 import java.util.Map;
 
@@ -19,39 +16,26 @@ import java.util.Map;
 public class PaymentController {
 
     private final PaymentService paymentService;
-    private final OrderRepository orderRepository;
+    private final OrderService orderService; // Injetado para gerir os pedidos
 
     @PostMapping("/webhook")
     public ResponseEntity<Void> handleWebhook(@RequestBody Map<String, Object> payload) {
-        // O Mercado Pago envia o ID do pagamento no campo "data.id"
-        if (payload.get("action") != null && payload.get("action").equals("payment.created") || payload.get("action").equals("payment.updated")) {
+        // Verifica se é uma atualização de pagamento
+        if ("payment.updated".equals(payload.get("action")) || "payment.created".equals(payload.get("action"))) {
             Map<String, Object> data = (Map<String, Object>) payload.get("data");
             String externalId = data.get("id").toString();
 
-            // 1. Procura o pagamento na tua base usando o ID externo
-            // Nota: Precisas de uma lógica aqui para encontrar a Order ligada a esse payment.externalId
-            
-            // Exemplo simplificado de lógica de atualização:
-            orderRepository.findAll().stream()
-                .filter(o -> o.getPayment() != null && externalId.equals(o.getPayment().getExternalId()))
-                .findFirst()
-                .ifPresent(order -> {
-                    // 2. Se o status for aprovado no Mercado Pago, mudamos para PROCESSING
-                    order.setStatus(OrderStatus.PROCESSING);
-                    orderRepository.save(order);
-                });
+            // Atualiza o status do pedido de forma performante usando o Service
+            orderService.updateOrderStatusByPaymentId(externalId, OrderStatus.PROCESSING);
         }
 
         return ResponseEntity.ok().build();
     }
-    // Adiciona este método dentro da classe PaymentController
+
     @PostMapping("/pix")
     public ResponseEntity<?> createPix(@RequestBody com.hygor.makeup_api.model.Payment payment, Authentication authentication) {
         try {
-            // Chama o serviço que já criaste
             var response = paymentService.createPixPayment(payment, authentication.getName());
-            
-            // Retorna os dados do Pix (incluindo o QR Code em base64 e o código para copiar)
             return ResponseEntity.ok(Map.of(
                 "id", response.getId(),
                 "qr_code", response.getPointOfInteraction().getTransactionData().getQrCode(),
