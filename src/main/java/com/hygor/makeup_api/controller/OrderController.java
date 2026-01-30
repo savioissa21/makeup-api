@@ -25,6 +25,12 @@ public class OrderController {
         return ResponseEntity.ok(orderService.createOrder(request));
     }
 
+    @PostMapping("/{orderNumber}/cancel")
+public ResponseEntity<OrderResponse> cancelOrder(@PathVariable String orderNumber) {
+    // Consome o serviço e devolve o DTO de resposta atualizado
+    return ResponseEntity.ok(orderService.cancelOrder(orderNumber));
+}
+
     /**
      * Retorna o histórico de pedidos do utilizador logado com paginação.
      */

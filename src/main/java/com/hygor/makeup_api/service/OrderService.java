@@ -104,6 +104,36 @@ public class OrderService extends BaseService<Order, OrderRepository> {
     }
 
     @Transactional
+    public OrderResponse cancelOrder(String orderNumber) {
+    // 1. Procura o pedido pelo número único
+    Order order = repository.findByOrderNumber(orderNumber)
+            .orElseThrow(() -> new RuntimeException("Pedido não encontrado: " + orderNumber));
+
+    // 2. Validações de Segurança: Só cancelamos se não tiver sido enviado
+    if (order.getStatus() == OrderStatus.CANCELLED) {
+        throw new RuntimeException("Este pedido já se encontra cancelado.");
+    }
+    if (order.getStatus() == OrderStatus.SHIPPED || order.getStatus() == OrderStatus.DELIVERED) {
+        throw new RuntimeException("Não é possível cancelar um pedido que já foi enviado ou entregue.");
+    }
+
+    // 3. MÁGICA DA REVERSÃO: Devolve os itens ao stock da boutique
+    for (OrderItem item : order.getItems()) {
+        Product product = item.getProduct();
+        // Soma a quantidade comprada de volta ao stock atual
+        product.setStockQuantity(product.getStockQuantity() + item.getQuantity());
+        productRepository.save(product); //
+    }
+
+    // 4. Atualiza o status e guarda
+    order.setStatus(OrderStatus.CANCELLED);
+    Order savedOrder = repository.save(order);
+    
+    log.info("Pedido {} cancelado com sucesso. Stock atualizado.", orderNumber);
+    return toResponse(savedOrder); // Retorna DTO de resposta
+}
+
+    @Transactional
     public void updateOrderStatusByPaymentId(String externalId, OrderStatus newStatus) {
         // Busca direta via ID do Mercado Pago
         Order order = repository.findByPaymentExternalId(externalId)
