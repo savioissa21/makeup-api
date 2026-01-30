@@ -1,74 +1,102 @@
 package com.hygor.makeup_api.service;
 
-import com.hygor.makeup_api.model.OrderStatus;
+import com.hygor.makeup_api.dto.review.ProductReviewRequest;
+import com.hygor.makeup_api.dto.review.ProductReviewResponse;
+import com.hygor.makeup_api.model.Product;
 import com.hygor.makeup_api.model.ProductReview;
-import com.hygor.makeup_api.repository.OrderRepository;
-import com.hygor.makeup_api.repository.ProductRepository;
+import com.hygor.makeup_api.model.User;
 import com.hygor.makeup_api.repository.ProductReviewRepository;
+import com.hygor.makeup_api.repository.ProductRepository;
+import com.hygor.makeup_api.repository.UserRepository;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 public class ProductReviewService extends BaseService<ProductReview, ProductReviewRepository> {
 
-    private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
+    private final UserRepository userRepository;
 
     public ProductReviewService(ProductReviewRepository repository, 
-                                OrderRepository orderRepository, 
-                                ProductRepository productRepository) {
+                                ProductRepository productRepository, 
+                                UserRepository userRepository) {
         super(repository);
-        this.orderRepository = orderRepository;
         this.productRepository = productRepository;
+        this.userRepository = userRepository;
     }
 
     /**
-     * Cria uma nova avaliação, validando a compra prévia e atualizando a média do produto.
+     * Cria uma avaliação e atualiza a média de rating do produto.
      */
     @Transactional
-    public ProductReview createReview(ProductReview review) {
-        Long userId = review.getUser().getId();
-        Long productId = review.getProduct().getId();
+    public ProductReviewResponse createReview(ProductReviewRequest request) {
+        // 1. Identifica o utilizador logado
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Utilizador não encontrado"));
 
-        // 1. Verificar se o utilizador já avaliou este produto
-        if (repository.existsByUserIdAndProductId(userId, productId)) {
-            throw new RuntimeException("Já avaliou este produto anteriormente.");
+        // 2. Busca o produto
+        Product product = productRepository.findById(request.getProductId())
+                .orElseThrow(() -> new RuntimeException("Produto não encontrado"));
+
+        // 3. Verifica se o utilizador já avaliou este produto (Prevenção de Spam)
+        if (repository.existsByUserAndProduct(user, product)) {
+            throw new RuntimeException("Você já avaliou este produto.");
         }
 
-        // 2. Verificar se o utilizador tem uma compra finalizada deste produto
-        boolean hasPurchased = orderRepository.findAll().stream()
-                .filter(order -> order.getCustomer().getId().equals(userId))
-                .filter(order -> order.getStatus() == OrderStatus.DELIVERED)
-                .flatMap(order -> order.getItems().stream())
-                .anyMatch(item -> item.getProduct().getId().equals(productId));
+        // 4. Cria a avaliação
+        ProductReview review = ProductReview.builder()
+                .rating(request.getRating())
+                .comment(request.getComment())
+                .product(product)
+                .user(user)
+                .build();
 
-        if (!hasPurchased) {
-            throw new RuntimeException("Apenas clientes que compraram e receberam o produto podem deixar uma avaliação.");
-        }
+        repository.save(review);
+        
+        // 5. Atualiza a nota média do produto
+        updateProductRating(product);
 
-        // 3. Guardar a avaliação
-        ProductReview savedReview = repository.save(review);
-
-        // 4. Recalcular e atualizar a média (rating) do produto
-        updateProductAverageRating(productId);
-
-        return savedReview;
+        log.info("Nova avaliação para o produto {}: {} estrelas", product.getName(), request.getRating());
+        return mapToResponse(review);
     }
 
-    private void updateProductAverageRating(Long productId) {
-        var product = productRepository.findById(productId)
-                .orElseThrow(() -> new RuntimeException("Produto não encontrado."));
+    /**
+     * Retorna todas as avaliações de um produto específico.
+     */
+    @Transactional(readOnly = true)
+    public List<ProductReviewResponse> getProductReviews(Long productId) {
+        return repository.findByProductId(productId).stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
 
-        List<ProductReview> reviews = repository.findByProductId(productId);
-        
+    /**
+     * Calcula e atualiza a média de rating do produto no banco.
+     */
+    private void updateProductRating(Product product) {
+        List<ProductReview> reviews = repository.findByProductId(product.getId());
         double average = reviews.stream()
-                .mapToDouble(ProductReview::getRating)
+                .mapToInt(ProductReview::getRating)
                 .average()
                 .orElse(0.0);
-
+        
         product.setRating(average);
         productRepository.save(product);
+    }
+
+    private ProductReviewResponse mapToResponse(ProductReview review) {
+        return ProductReviewResponse.builder()
+                .customerName(review.getUser().getFirstName() + " " + review.getUser().getLastName())
+                .rating(review.getRating())
+                .comment(review.getComment())
+                .createdAt(review.getCreatedAt())
+                .build();
     }
 }

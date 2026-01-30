@@ -3,54 +3,54 @@ package com.hygor.makeup_api.service;
 import com.hygor.makeup_api.model.CartItem;
 import com.hygor.makeup_api.repository.CartItemRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
-/**
- * Serviço responsável por operações granulares nos itens do carrinho.
- */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class CartItemService {
 
     private final CartItemRepository repository;
 
     /**
-     * Atualiza a quantidade de um item específico que já está no carrinho.
+     * Remove um item específico do carrinho.
      */
     @Transactional
-    public CartItem updateQuantity(Long itemId, Integer newQuantity) {
-        if (newQuantity <= 0) {
-            throw new RuntimeException("A quantidade deve ser maior que zero.");
+    public void removeItem(Long itemId) {
+        if (!repository.existsById(itemId)) {
+            throw new RuntimeException("Item não encontrado no carrinho.");
         }
-
-        CartItem item = repository.findById(itemId)
-                .orElseThrow(() -> new RuntimeException("Item do carrinho não encontrado."));
-
-        item.setQuantity(newQuantity);
-        return repository.save(item);
+        repository.deleteById(itemId);
+        log.info("Item ID {} removido do carrinho com sucesso.", itemId);
     }
 
     /**
-     * Procura um item específico pelo ID.
+     * Atualiza a quantidade de um item já existente.
+     */
+    @Transactional
+    public void updateQuantity(Long itemId, Integer quantity) {
+        CartItem item = repository.findById(itemId)
+                .orElseThrow(() -> new RuntimeException("Item não encontrado."));
+
+        if (quantity <= 0) {
+            repository.delete(item);
+            log.info("Item removido pois a quantidade definida foi zero ou negativa.");
+        } else {
+            item.setQuantity(quantity);
+            repository.save(item);
+            log.info("Quantidade do item ID {} atualizada para {}.", itemId, quantity);
+        }
+    }
+
+    /**
+     * Procura itens de um carrinho específico.
      */
     @Transactional(readOnly = true)
-    public CartItem findById(Long id) {
-        return repository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Item não encontrado."));
-    }
-
-    /**
-     * Remove fisicamente o item da base de dados.
-     * Nota: Itens de carrinho geralmente não usam Soft Delete pois são temporários.
-     */
-    @Transactional
-    public void delete(Long id) {
-        if (!repository.existsById(id)) {
-            throw new RuntimeException("Não foi possível remover: Item inexistente.");
-        }
-        repository.deleteById(id);
+    public List<CartItem> findByCartId(Long cartId) {
+        return repository.findByCartId(cartId);
     }
 }

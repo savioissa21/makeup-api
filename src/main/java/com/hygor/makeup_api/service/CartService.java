@@ -1,104 +1,129 @@
 package com.hygor.makeup_api.service;
 
+import com.hygor.makeup_api.dto.cart.CartItemRequest;
+import com.hygor.makeup_api.dto.cart.CartResponse;
+import com.hygor.makeup_api.dto.cart.CartItemResponse;
 import com.hygor.makeup_api.model.Cart;
 import com.hygor.makeup_api.model.CartItem;
 import com.hygor.makeup_api.model.Product;
+import com.hygor.makeup_api.model.User;
 import com.hygor.makeup_api.repository.CartItemRepository;
 import com.hygor.makeup_api.repository.CartRepository;
 import com.hygor.makeup_api.repository.ProductRepository;
 import com.hygor.makeup_api.repository.UserRepository;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.Optional;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 public class CartService extends BaseService<Cart, CartRepository> {
 
-    private final CartItemRepository cartItemRepository;
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
+    private final CartItemRepository cartItemRepository;
 
     public CartService(CartRepository repository, 
-                       CartItemRepository cartItemRepository, 
                        ProductRepository productRepository, 
-                       UserRepository userRepository) {
+                       UserRepository userRepository, 
+                       CartItemRepository cartItemRepository) {
         super(repository);
-        this.cartItemRepository = cartItemRepository;
         this.productRepository = productRepository;
         this.userRepository = userRepository;
+        this.cartItemRepository = cartItemRepository;
     }
 
     /**
-     * Recupera o carrinho do utilizador logado ou cria um novo se não existir.
+     * Adiciona ou atualiza um item no carrinho do utilizador logado.
      */
     @Transactional
-    public Cart getOrCreateCart(String email) {
-        return repository.findByUserEmail(email)
-                .orElseGet(() -> {
-                    var user = userRepository.findByEmail(email)
-                            .orElseThrow(() -> new RuntimeException("Utilizador não encontrado."));
-                    Cart newCart = Cart.builder().user(user).build();
-                    return repository.save(newCart);
-                });
-    }
+    public CartResponse addItemToCart(CartItemRequest request) {
+        User user = getAuthenticatedUser();
+        Cart cart = getOrCreateCart(user);
+        
+        Product product = productRepository.findById(request.getProductId())
+                .orElseThrow(() -> new RuntimeException("Produto não encontrado"));
 
-    /**
-     * Adiciona um produto ao carrinho com validação de stock.
-     */
-    @Transactional
-    public Cart addItemToCart(String email, Long productId, Integer quantity) {
-        Cart cart = getOrCreateCart(email);
-        Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new RuntimeException("Produto não encontrado."));
-
-        // Validação de Stock
-        if (product.getStockQuantity() < quantity) {
-            throw new RuntimeException("Stock insuficiente para o produto: " + product.getName());
+        // Validação de Stock preventiva
+        if (product.getStockQuantity() < request.getQuantity()) {
+            throw new RuntimeException("Quantidade solicitada indisponível em stock");
         }
 
         // Verifica se o item já existe no carrinho para apenas somar a quantidade
-        Optional<CartItem> existingItem = cart.getItems().stream()
-                .filter(item -> item.getProduct().getId().equals(productId))
-                .findFirst();
+        CartItem cartItem = cart.getItems().stream()
+                .filter(item -> item.getProduct().getId().equals(product.getId()))
+                .findFirst()
+                .orElse(CartItem.builder().cart(cart).product(product).quantity(0).build());
 
-        if (existingItem.isPresent()) {
-            existingItem.get().setQuantity(existingItem.get().getQuantity() + quantity);
-        } else {
-            CartItem newItem = CartItem.builder()
-                    .cart(cart)
-                    .product(product)
-                    .quantity(quantity)
-                    .build();
-            cart.addItem(newItem);
+        cartItem.setQuantity(cartItem.getQuantity() + request.getQuantity());
+        
+        if (cartItem.getId() == null) {
+            cart.getItems().add(cartItem);
         }
 
-        return repository.save(cart);
+        repository.save(cart);
+        log.info("Item {} adicionado ao carrinho do utilizador {}", product.getName(), user.getEmail());
+        
+        return mapToResponse(cart);
     }
 
     /**
-     * Calcula o valor total de todos os itens no carrinho.
+     * Retorna o carrinho completo com totais calculados.
      */
-    public BigDecimal calculateTotal(Cart cart) {
-        return cart.getItems().stream()
-                .map(item -> {
-                    // Usa o preço de desconto se existir, caso contrário o preço normal
-                    BigDecimal price = item.getProduct().getDiscountPrice() != null ? 
-                                       item.getProduct().getDiscountPrice() : 
-                                       item.getProduct().getPrice();
-                    return price.multiply(new BigDecimal(item.getQuantity()));
-                })
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    @Transactional(readOnly = true)
+    public CartResponse getMyCart() {
+        User user = getAuthenticatedUser();
+        Cart cart = getOrCreateCart(user);
+        return mapToResponse(cart);
     }
 
     /**
-     * Remove um item específico do carrinho.
+     * Limpa o carrinho após a finalização de um pedido.
      */
     @Transactional
-    public Cart removeItem(String email, Long cartItemId) {
-        Cart cart = getOrCreateCart(email);
-        cart.getItems().removeIf(item -> item.getId().equals(cartItemId));
-        return repository.save(cart);
+    public void clearCart() {
+        User user = getAuthenticatedUser();
+        Cart cart = getOrCreateCart(user);
+        cartItemRepository.deleteAll(cart.getItems());
+        cart.getItems().clear();
+        repository.save(cart);
+    }
+
+    private Cart getOrCreateCart(User user) {
+        return repository.findByUserEmail(user.getEmail())
+                .orElseGet(() -> repository.save(Cart.builder().user(user).items(new ArrayList<>()).build()));
+    }
+
+    private User getAuthenticatedUser() {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Utilizador não autenticado"));
+    }
+
+    private CartResponse mapToResponse(Cart cart) {
+        List<CartItemResponse> items = cart.getItems().stream()
+                .map(item -> CartItemResponse.builder()
+                        .productId(item.getProduct().getId())
+                        .productName(item.getProduct().getName())
+                        .quantity(item.getQuantity())
+                        .unitPrice(item.getProduct().getPrice())
+                        .subtotal(item.getProduct().getPrice().multiply(new BigDecimal(item.getQuantity())))
+                        .build())
+                .collect(Collectors.toList());
+
+        BigDecimal total = items.stream()
+                .map(CartItemResponse::getSubtotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return CartResponse.builder()
+                .items(items)
+                .totalAmount(total)
+                .build();
     }
 }
