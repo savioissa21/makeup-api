@@ -12,10 +12,6 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
-/**
- * Configuração mestre de segurança.
- * Define quem pode acessar o quê, baseado em Roles (ADMIN e CUSTOMER).
- */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
@@ -25,28 +21,37 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthFilter;
     private final AuthenticationProvider authenticationProvider;
 
- @Bean
-public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-    http
-        .csrf(csrf -> csrf.disable())
-        .authorizeHttpRequests(auth -> auth
-            // Rota pública para o Webhook do Mercado Pago
-            .requestMatchers(HttpMethod.POST, "/api/v1/payments/webhook").permitAll() 
-            
-            // Outras rotas já configuradas
-            .requestMatchers("/api/v1/auth/**").permitAll()
-            .requestMatchers(HttpMethod.GET, "/api/v1/products/**").permitAll()
-            .requestMatchers(HttpMethod.GET, "/api/v1/categories/**").permitAll()
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http
+            .csrf(csrf -> csrf.disable())
+            .authorizeHttpRequests(auth -> auth
+                // 1. Rotas do Swagger (Sempre antes do anyRequest!)
+                .requestMatchers(
+                    "/v3/api-docs/**",
+                    "/swagger-ui/**",
+                    "/swagger-ui.html"
+                ).permitAll()
 
-            .requestMatchers(HttpMethod.POST, "/api/v1/products/**").hasRole("ADMIN")
-            .requestMatchers(HttpMethod.PUT, "/api/v1/products/**").hasRole("ADMIN")
-            .requestMatchers(HttpMethod.DELETE, "/api/v1/products/**").hasRole("ADMIN")
+                // 2. Webhook do Mercado Pago
+                .requestMatchers(HttpMethod.POST, "/api/v1/payments/webhook").permitAll() 
+                
+                // 3. Rotas Públicas da Boutique
+                .requestMatchers("/api/v1/auth/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/products/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/categories/**").permitAll()
 
-            .anyRequest().authenticated()
-        )
+                // 4. Rotas de Admin
+                .requestMatchers(HttpMethod.POST, "/api/v1/products/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.PUT, "/api/v1/products/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.DELETE, "/api/v1/products/**").hasRole("ADMIN")
+
+                // 5. O GRANDE FINAL (Esta linha deve ser a última!)
+                .anyRequest().authenticated()
+            )
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-        .authenticationProvider(authenticationProvider)
-        .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+            .authenticationProvider(authenticationProvider)
+            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
