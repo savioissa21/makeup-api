@@ -22,18 +22,18 @@ public class MfaService {
         return secretGenerator.generate(); 
     }
 
-    public String getQrCodeUrl(String secret, String email) {
-        // CORREÇÃO: Usar QrData.Builder diretamente em vez de QrDataFactory
-        QrData data = new QrData.Builder()
-                .label(email)
-                .secret(secret)
-                .issuer("Boutique Hygor & Ana Julia")
-                .algorithm(HashingAlgorithm.SHA1)
-                .digits(6)
-                .period(30)
-                .build();
-        return data.getUri(); 
-    }
+   public String getQrCodeUrl(String secret, String email) {
+    // CORREÇÃO: Usar o Builder direto para evitar erro de compilação 🕵️‍♀️ ✨
+    dev.samstevens.totp.qr.QrData data = new dev.samstevens.totp.qr.QrData.Builder()
+            .label(email)
+            .secret(secret)
+            .issuer("Boutique Hygor & Ana Julia")
+            .algorithm(dev.samstevens.totp.code.HashingAlgorithm.SHA1)
+            .digits(6)
+            .period(30)
+            .build();
+    return data.getUri(); 
+}
 
     public boolean verifyCode(String secret, int code) {
         return verifier.isValidCode(secret, String.format("%06d", code));
