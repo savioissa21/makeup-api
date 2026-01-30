@@ -4,9 +4,6 @@ import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
 
-/**
- * Entidade para controle de transações financeiras.
- */
 @Entity
 @Table(name = "payments")
 @Getter
@@ -24,7 +21,7 @@ public class Payment extends BaseEntity {
     @Column(nullable = false)
     private PaymentStatus status;
 
-    private String externalId; // ID do Mercado Pago, Stripe, etc.
+    private String externalId; // ID retornado pelo Mercado Pago
 
     private Integer installments;
 
@@ -32,10 +29,11 @@ public class Payment extends BaseEntity {
     private BigDecimal amount;
 }
 
-enum PaymentMethod {
+// Enums públicos para evitar erros de visibilidade 🕵️‍♀️ ✨
+public enum PaymentMethod {
     CREDIT_CARD, PIX, BOLETO
 }
 
-enum PaymentStatus {
+public enum PaymentStatus {
     PENDING, APPROVED, REFUNDED, CANCELLED
 }

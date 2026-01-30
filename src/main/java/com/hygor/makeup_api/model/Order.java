@@ -46,4 +46,16 @@ public class Order extends BaseEntity {
     @OneToOne(cascade = CascadeType.ALL)
     @JoinColumn(name = "payment_id")
     private Payment payment;
+
+@Column(precision = 19, scale = 2)
+private BigDecimal subtotal;      // Valor dos produtos sem frete/desconto
+
+@Column(precision = 19, scale = 2)
+private BigDecimal shippingFee;   // Quanto custou o envio 🚚
+
+@Column(precision = 19, scale = 2)
+private BigDecimal discountAmount; // Quanto o cupão abateu
+
+private String shippingMethod;    // Ex: "Correios - SEDEX"
+
 }

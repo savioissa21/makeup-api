@@ -14,4 +14,7 @@ private BigDecimal subtotal;      // Valor sem desconto
 private BigDecimal discountAmount; // Valor subtraído
 private String appliedCoupon;     // Código do cupão para feedback visual
 // O totalAmount continuará a ser o valor final a pagar
+private BigDecimal shippingFee;   // Valor do frete 🚚
+private String shippingMethod;    // Ex: "Correios - SEDEX"
+private Integer deliveryDays;     // Prazo estimado
 }

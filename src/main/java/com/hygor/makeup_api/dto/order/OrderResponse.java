@@ -13,7 +13,14 @@ public class OrderResponse {
     private String orderNumber;
     private LocalDateTime orderDate;
     private OrderStatus status;
+    
+    // Detalhamento Financeiro 💎 ✨
+    private BigDecimal subtotal;
+    private BigDecimal shippingFee;
+    private BigDecimal discountAmount;
     private BigDecimal totalAmount;
+    
+    private String shippingMethod;
     private String trackingCode;
     private List<OrderItemResponse> items;
 }
