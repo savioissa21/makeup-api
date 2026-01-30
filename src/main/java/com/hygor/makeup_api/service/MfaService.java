@@ -1,27 +1,41 @@
 package com.hygor.makeup_api.service;
 
-import com.warrenstrange.googleauth.GoogleAuthenticator;
-import com.warrenstrange.googleauth.GoogleAuthenticatorKey; // IMPORT CRÍTICO
-import com.warrenstrange.googleauth.GoogleAuthenticatorQRGenerator;
+import dev.samstevens.totp.code.CodeVerifier;
+import dev.samstevens.totp.code.DefaultCodeGenerator;
+import dev.samstevens.totp.code.DefaultCodeVerifier;
+import dev.samstevens.totp.code.HashingAlgorithm;
+import dev.samstevens.totp.qr.QrData; // Import correto
+import dev.samstevens.totp.secret.DefaultSecretGenerator;
+import dev.samstevens.totp.secret.SecretGenerator;
+import dev.samstevens.totp.time.SystemTimeProvider;
+import dev.samstevens.totp.time.TimeProvider;
 import org.springframework.stereotype.Service;
 
 @Service
 public class MfaService {
 
-    private final GoogleAuthenticator gAuth = new GoogleAuthenticator();
+    private final SecretGenerator secretGenerator = new DefaultSecretGenerator();
+    private final TimeProvider timeProvider = new SystemTimeProvider();
+    private final CodeVerifier verifier = new DefaultCodeVerifier(new DefaultCodeGenerator(), timeProvider);
 
     public String generateNewSecret() {
-        // O método createCredentials() devolve um objeto GoogleAuthenticatorKey
-        final GoogleAuthenticatorKey key = gAuth.createCredentials();
-        return key.getSecret(); // Se der erro aqui, tenta limpar o projeto (mvn clean) ⚡
+        return secretGenerator.generate(); 
     }
 
     public String getQrCodeUrl(String secret, String email) {
-        return GoogleAuthenticatorQRGenerator.getOtpAuthURL("Boutique Hygor & Ana Julia", email, 
-                new GoogleAuthenticatorKey.Builder(secret).build());
+        // CORREÇÃO: Usar QrData.Builder diretamente em vez de QrDataFactory
+        QrData data = new QrData.Builder()
+                .label(email)
+                .secret(secret)
+                .issuer("Boutique Hygor & Ana Julia")
+                .algorithm(HashingAlgorithm.SHA1)
+                .digits(6)
+                .period(30)
+                .build();
+        return data.getUri(); 
     }
 
     public boolean verifyCode(String secret, int code) {
-        return gAuth.authorize(secret, code);
+        return verifier.isValidCode(secret, String.format("%06d", code));
     }
 }
