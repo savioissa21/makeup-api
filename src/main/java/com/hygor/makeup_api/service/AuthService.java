@@ -12,6 +12,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional; // Adicionado import
 
 @Service
 @RequiredArgsConstructor
@@ -22,50 +23,66 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
+    
+    // 1. O PULO DO GATO: Injetar o MfaService aqui! 🕵️‍♀️ ✨
+    private final MfaService mfaService;
 
     public String register(User user) {
         if (userRepository.existsByEmail(user.getEmail())) {
             throw new RuntimeException("Este e-mail já está em uso.");
         }
 
-        // 1. Busca o papel padrão de cliente no banco de dados
         var customerRole = roleRepository.findByName("ROLE_CUSTOMER")
                 .orElseThrow(() -> new RuntimeException("Erro: Papel ROLE_CUSTOMER não encontrado no sistema."));
 
-        // 2. Atribui o papel ao utilizador
-        // Certifique-se de que user.getRoles() não é null (no seu Model User.java ele está inicializado como HashSet)
         user.getRoles().add(customerRole);
-
-        // 3. Criptografa a senha antes de salvar
         user.setPassword(passwordEncoder.encode(user.getPassword()));
-        
-        // 4. Salva o utilizador com as suas permissões
         userRepository.save(user);
         
         return jwtService.generateToken(new UserPrincipal(user));
     }
 
-public AuthResponse authenticate(LoginRequest request) {
-    var user = userRepository.findByEmail(request.getEmail())
-            .orElseThrow(() -> new RuntimeException("Usuário não encontrado."));
+    public AuthResponse authenticate(LoginRequest request) {
+        var user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado."));
 
-    // Valida a senha primeiro
-    authenticationManager.authenticate(
-            new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
-    );
+        authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
+        );
 
-    // Verifica se a Ana Julia ativou o MFA para este utilizador
-    if (user.isMfaEnabled()) {
+        // Se o MFA estiver ativo, avisa o front-end
+        if (user.isMfaEnabled()) {
+            return AuthResponse.builder()
+                    .mfaRequired(true)
+                    .message("Por favor, insira o código do seu autenticador.")
+                    .build();
+        }
+
+        String token = jwtService.generateToken(new UserPrincipal(user));
         return AuthResponse.builder()
-                .mfaRequired(true)
-                .message("Por favor, insira o código do seu autenticador.")
+                .token(token)
+                .mfaRequired(false)
                 .build();
     }
 
-    String token = jwtService.generateToken(new UserPrincipal(user));
-    return AuthResponse.builder()
-            .token(token)
-            .mfaRequired(false)
-            .build();
-}
+    /**
+     * Validação Final: Troca o código TOTP pelo Token JWT definitivo. 💎 ✨
+     */
+    @Transactional
+    public AuthResponse verifyMfaAndLogin(String email, int code) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Utilizador não encontrado."));
+
+        // Verifica se o código que a Ana Julia digitou bate com o segredo no banco 🔐
+        if (!mfaService.verifyCode(user.getSecretMfa(), code)) {
+            throw new RuntimeException("Código MFA inválido ou expirado.");
+        }
+
+        // Se o código estiver certo, liberta o acesso total! 🛡️
+        String token = jwtService.generateToken(new UserPrincipal(user));
+        return AuthResponse.builder()
+                .token(token)
+                .mfaRequired(false)
+                .build();
+    }
 }
