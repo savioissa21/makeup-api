@@ -42,6 +42,12 @@ public class Product extends BaseEntity {
     @Column(nullable = false)
     private Integer stockQuantity;
 
+    // URL da imagem real do produto para o front-end
+    private String imageUrl;
+
+    // Quantidade máxima de parcelas permitidas (ex: 4)
+    private Integer maxInstallments;
+
     // Prompt utilizado para gerar a imagem real via IA
     private String imagePrompt;
 
