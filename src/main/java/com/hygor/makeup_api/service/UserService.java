@@ -17,10 +17,12 @@ import java.util.stream.Collectors;
 public class UserService extends BaseService<User, UserRepository> {
 
     private final PasswordEncoder passwordEncoder;
+    private final MfaService mfaService;
 
-    public UserService(UserRepository repository, PasswordEncoder passwordEncoder) {
+    public UserService(UserRepository repository, PasswordEncoder passwordEncoder,  MfaService mfaService) {
         super(repository);
         this.passwordEncoder = passwordEncoder;
+          this.mfaService = mfaService;
     }
 
     /**
@@ -72,4 +74,27 @@ public class UserService extends BaseService<User, UserRepository> {
                         .collect(Collectors.toSet()))
                 .build();
     }
+    @Transactional
+public String generateMfaQrCode() {
+    User user = getAuthenticatedUser();
+    
+    // Gera e guarda o segredo no utilizador
+    String secret = mfaService.generateNewSecret();
+    user.setSecretMfa(secret);
+    repository.save(user);
+
+    return mfaService.getQrCodeUrl(secret, user.getEmail());
+}
+@Transactional
+public void enableMfa(int code) {
+    User user = getAuthenticatedUser();
+    
+    // Verifica se o código que a Ana Julia digitou no telemóvel está correto 🕵️‍♀️ ✨
+    if (mfaService.verifyCode(user.getSecretMfa(), code)) {
+        user.setMfaEnabled(true);
+        repository.save(user);
+    } else {
+        throw new RuntimeException("Código MFA inválido. Tente novamente.");
+    }
+}
 }

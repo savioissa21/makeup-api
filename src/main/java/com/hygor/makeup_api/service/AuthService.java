@@ -1,5 +1,7 @@
 package com.hygor.makeup_api.service;
 
+import com.hygor.makeup_api.dto.auth.AuthResponse;
+import com.hygor.makeup_api.dto.auth.LoginRequest;
 import com.hygor.makeup_api.model.User;
 import com.hygor.makeup_api.repository.UserRepository;
 import com.hygor.makeup_api.repository.RoleRepository; 
@@ -43,14 +45,27 @@ public class AuthService {
         return jwtService.generateToken(new UserPrincipal(user));
     }
 
-    public String authenticate(String email, String password) {
-        authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(email, password)
-        );
-        
-        var user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Usuário não encontrado."));
-        
-        return jwtService.generateToken(new UserPrincipal(user));
+public AuthResponse authenticate(LoginRequest request) {
+    var user = userRepository.findByEmail(request.getEmail())
+            .orElseThrow(() -> new RuntimeException("Usuário não encontrado."));
+
+    // Valida a senha primeiro
+    authenticationManager.authenticate(
+            new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
+    );
+
+    // Verifica se a Ana Julia ativou o MFA para este utilizador
+    if (user.isMfaEnabled()) {
+        return AuthResponse.builder()
+                .mfaRequired(true)
+                .message("Por favor, insira o código do seu autenticador.")
+                .build();
     }
+
+    String token = jwtService.generateToken(new UserPrincipal(user));
+    return AuthResponse.builder()
+            .token(token)
+            .mfaRequired(false)
+            .build();
+}
 }

@@ -117,4 +117,10 @@ public class ProductService extends BaseService<Product, ProductRepository> {
                 .categoryName(product.getCategory() != null ? product.getCategory().getName() : "Sem Categoria")
                 .build();
     }
+    @Transactional
+public ProductResponse updateProductImage(Long id, String imageUrl) {
+    Product product = findActiveById(id); // Usa o método da BaseService
+    product.setImageUrl(imageUrl); //
+    return toResponse(repository.save(product));
+}
 }

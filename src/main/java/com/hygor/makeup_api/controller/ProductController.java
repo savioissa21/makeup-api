@@ -2,12 +2,17 @@ package com.hygor.makeup_api.controller;
 
 import com.hygor.makeup_api.dto.product.ProductResponse;
 import com.hygor.makeup_api.model.Product;
+import com.hygor.makeup_api.repository.ProductRepository;
+import com.hygor.makeup_api.service.FileStorageService;
 import com.hygor.makeup_api.service.ProductService;
+
+import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 
@@ -17,6 +22,8 @@ import java.math.BigDecimal;
 public class ProductController {
 
     private final ProductService productService;
+    private final FileStorageService fileStorageService;
+
 
     @GetMapping
     public ResponseEntity<Page<ProductResponse>> getAllProducts(
@@ -39,4 +46,13 @@ public class ProductController {
         // CORREÇÃO: Busca o produto pelo slug e já retorna como DTO
         return ResponseEntity.ok(productService.findBySlug(slug)); 
     }
+   @PostMapping("/{id}/upload-image")
+@Operation(summary = "Upload de foto do produto", description = "Guarda a foto real da maquiagem no servidor.")
+public ResponseEntity<ProductResponse> uploadImage(@PathVariable Long id, @RequestParam("file") MultipartFile file) {
+    String fileName = fileStorageService.saveImage(file);
+    String imageUrl = "/uploads/" + fileName;
+    
+    // Chama o serviço para salvar e converter para DTO
+    return ResponseEntity.ok(productService.updateProductImage(id, imageUrl));
+}
 }
