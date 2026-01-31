@@ -222,4 +222,50 @@ public class OrderService extends BaseService<Order, OrderRepository> {
                 .items(itemResponses)
                 .build();
     }
+
+    public void processPaymentNotification(Order order, PaymentStatus newPaymentStatus) {
+        // Idempotência: Se o status já for o mesmo, não faz nada
+        if (order.getPayment().getStatus() == newPaymentStatus) {
+            log.info("Pedido {} já processado com o status {}. Ignorando atualização.", order.getOrderNumber(),
+                    newPaymentStatus);
+            return;
+        }
+
+        Payment payment = order.getPayment();
+        payment.setStatus(newPaymentStatus);
+
+        switch (newPaymentStatus) {
+            case APPROVED:
+                log.info("Pagamento aprovado para o pedido {}. Preparando envio.", order.getOrderNumber());
+                // Se estava cancelado antes (caso raro de race condition), retira stock
+                // novamente?
+                // Assumindo fluxo normal: Muda para PROCESSING (Pronto para embalar)
+                order.setStatus(OrderStatus.PROCESSING);
+                break;
+
+            case CANCELLED:
+            case REFUNDED:
+                log.info("Pagamento cancelado/rejeitado para o pedido {}. Devolvendo stock.", order.getOrderNumber());
+                order.setStatus(OrderStatus.CANCELLED);
+                restoreStock(order); // Método auxiliar para devolver stock
+                break;
+
+            default:
+                // PENDING ou outros status intermediários não alteram o fluxo crítico
+                break;
+        }
+
+        repository.save(order);
+    }
+
+    private void restoreStock(Order order) {
+        // Só devolve stock se o pedido ainda não tiver sido devolvido (proteção extra)
+        for (OrderItem item : order.getItems()) {
+            ProductVariant variant = item.getVariant();
+            // Devolve a quantidade ao stock disponível
+            variant.setStockQuantity(variant.getStockQuantity() + item.getQuantity());
+            variantRepository.save(variant);
+            log.debug("Stock restaurado para SKU {}: +{}", variant.getSku(), item.getQuantity());
+        }
+    }
 }

@@ -1,5 +1,6 @@
 package com.hygor.makeup_api.controller;
 
+import com.hygor.makeup_api.dto.payment.MercadoPagoWebhookDTO;
 import com.hygor.makeup_api.model.*; 
 import com.hygor.makeup_api.service.OrderService;
 import com.hygor.makeup_api.service.PaymentService;
@@ -50,5 +51,14 @@ public class PaymentController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Erro ao processar pagamento: " + e.getMessage());
         }
+    }
+
+    @PostMapping("/webhook")
+    @Operation(summary = "Recebe notificações do Mercado Pago", description = "Endpoint público para Webhooks. Processa atualizações de status de pagamento.")
+    public ResponseEntity<Void> handleWebhook(@RequestBody MercadoPagoWebhookDTO webhook) {
+        // Respondemos 200 OK rapidamente para o Mercado Pago não ficar reenviando enquanto processamos
+        // O processamento idealmente deveria ser assíncrono (@Async), mas para agora síncrono funciona bem.
+        paymentService.processWebhook(webhook);
+        return ResponseEntity.ok().build();
     }
 }
