@@ -2,7 +2,6 @@ package com.hygor.makeup_api.service;
 
 import com.hygor.makeup_api.dto.product.ProductRequest;
 import com.hygor.makeup_api.dto.product.ProductResponse;
-import com.hygor.makeup_api.dto.product.ProductStockRequest;
 import com.hygor.makeup_api.model.Brand;
 import com.hygor.makeup_api.model.Category;
 import com.hygor.makeup_api.model.Product;
@@ -28,7 +27,6 @@ public class ProductService extends BaseService<Product, ProductRepository> {
     private final CategoryRepository categoryRepository;
     private final BrandRepository brandRepository;
     
-    // Injeção dos serviços necessários para o toResponse
     private final BrandService brandService;
     private final CategoryService categoryService;
     private final ProductVariantService variantService;
@@ -51,7 +49,8 @@ public class ProductService extends BaseService<Product, ProductRepository> {
     }
 
     /**
-     * Cria um novo produto com validação de Categoria e Marca.
+     * Cria um novo produto. 
+     * Nota: O estoque inicial agora deve ser gerenciado via ProductVariantController.
      */
     @Transactional
     public ProductResponse createProduct(ProductRequest request) {
@@ -69,7 +68,7 @@ public class ProductService extends BaseService<Product, ProductRepository> {
                 .description(request.getDescription())
                 .price(request.getPrice())
                 .discountPrice(request.getDiscountPrice())
-                .stockQuantity(request.getStockQuantity())
+                // O campo stockQuantity foi removido da entidade Product para evitar divergência
                 .imagePrompt(request.getImagePrompt())
                 .rating(0.0)
                 .slug(generateSlug(request.getName()))
@@ -96,13 +95,8 @@ public class ProductService extends BaseService<Product, ProductRepository> {
         return repository.findAll(pageable).map(this::toResponse);
     }
 
-    @Transactional
-    public ProductResponse updateStock(Long id, ProductStockRequest request) {
-        Product product = findActiveById(id);
-        product.setStockQuantity(request.getStockQuantity());
-        log.info("Stock atualizado para o produto ID {}: novo total {}", id, request.getStockQuantity());
-        return toResponse(repository.save(product));
-    }
+    // O método updateStock agora deve ser feito via Variação (SKU), 
+    // pois o estoque do Produto é apenas a soma das variações.
 
     @Transactional(readOnly = true)
     public ProductResponse findBySlug(String slug) {
@@ -120,6 +114,7 @@ public class ProductService extends BaseService<Product, ProductRepository> {
 
     /**
      * Converte a Entidade para DTO - Centralizado.
+     * Implementa a Sincronização de Estoque Total (Soma de SKUs).
      */
     public ProductResponse toResponse(Product product) {
         return ProductResponse.builder()
@@ -131,7 +126,8 @@ public class ProductService extends BaseService<Product, ProductRepository> {
                 .discountPrice(product.getDiscountPrice())
                 .rating(product.getRating())
                 .imageUrl(product.getImageUrl())
-                // Agora os serviços estão disponíveis para uso
+                // CHAVE DA SINCRONIZAÇÃO: Calcula o estoque total somando as variantes 💎
+                .totalStock(product.getTotalStockQuantity()) 
                 .brand(brandService.mapToResponse(product.getBrand()))
                 .category(categoryService.mapToResponse(product.getCategory()))
                 .variants(product.getVariants().stream()

@@ -7,20 +7,13 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Entidade de Produto otimizada para e-commerce de luxo.
- * Utiliza BigDecimal para precisão financeira e slugs para URLs amigáveis
- * (SEO).
- */
 @Entity
 @Table(name = "products", indexes = {
-        @Index(name = "idx_product_slug", columnList = "slug", unique = true)
+    @Index(name = "idx_product_slug", columnList = "slug", unique = true)
 })
 @SQLRestriction("deleted = false")
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
+@Getter @Setter
+@NoArgsConstructor @AllArgsConstructor
 @Builder
 public class Product extends BaseEntity {
 
@@ -39,18 +32,12 @@ public class Product extends BaseEntity {
     @Column(precision = 19, scale = 2)
     private BigDecimal discountPrice;
 
-    @Column(nullable = false)
-    private Integer stockQuantity;
+    // REMOVIDO: stockQuantity como campo persistido 
+    // Agora o stock é gerido pelas variantes (SKUs)
 
-    // URL da imagem real do produto para o front-end
     private String imageUrl;
-
-    // Quantidade máxima de parcelas permitidas (ex: 4)
     private Integer maxInstallments;
-
-    // Prompt utilizado para gerar a imagem real via IA
     private String imagePrompt;
-
     private Double rating;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -61,6 +48,21 @@ public class Product extends BaseEntity {
     @JoinColumn(name = "brand_id", nullable = false)
     private Brand brand;
 
+    // NOVO: Relacionamento com as Variações (Cores/Tons) 💎
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
     private List<ProductVariant> variants = new ArrayList<>();
+
+    /**
+     * CÁLCULO DE STOCK TOTAL: Soma dinâmica de todas as variantes.
+     * Isto garante que o dado nunca esteja divergente. ✨
+     */
+    public Integer getTotalStockQuantity() {
+        if (variants == null || variants.isEmpty()) {
+            return 0;
+        }
+        return variants.stream()
+                .mapToInt(ProductVariant::getStockQuantity)
+                .sum();
+    }
 }

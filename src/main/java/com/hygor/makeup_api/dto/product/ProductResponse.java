@@ -3,10 +3,7 @@ package com.hygor.makeup_api.dto.product;
 import com.hygor.makeup_api.dto.brand.BrandResponse;
 import com.hygor.makeup_api.dto.category.CategoryResponse;
 import com.hygor.makeup_api.dto.variant.ProductVariantResponse;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import java.math.BigDecimal;
 import java.util.List;
 
@@ -23,6 +20,7 @@ public class ProductResponse {
     private BigDecimal discountPrice;
     private Double rating;
     private String imageUrl;
+    private Integer totalStock; // Adicionado: Stock total somado das variantes
     
     private BrandResponse brand; 
     private CategoryResponse category;
