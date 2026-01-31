@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; color: #333; }
+        .card { background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #ddd; }
+        .highlight { font-size: 1.5em; color: #2c3e50; font-weight: bold; }
+        .warning { color: #e74c3c; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border-bottom: 1px solid #eee; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+    <h2>📊 Fechamento do Dia: <span th:text="${date}">2023-10-25</span></h2>
+    
+    <div class="card">
+        <h3>Resumo Financeiro</h3>
+        <p>Faturamento: <span class="highlight">R$ <span th:text="${revenue}">1500.00</span></span></p>
+        <p>Total de Pedidos: <strong th:text="${stats.totalOrders}">10</strong></p>
+        <p>Ticket Médio: R$ <span th:text="${ticket}">150.00</span></p>
+    </div>
+
+    <div class="card" th:if="${stats.lowStockCount > 0}">
+        <p class="warning">⚠️ Atenção: Existem <span th:text="${stats.lowStockCount}">3</span> produtos com estoque crítico!</p>
+    </div>
+
+    <div class="card" th:if="${not #lists.isEmpty(stats.topSellingProducts)}">
+        <h3>🏆 Top Produtos Vendidos</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Produto</th>
+                    <th>Variação</th>
+                    <th>Qtd.</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr th:each="prod : ${stats.topSellingProducts}">
+                    <td th:text="${prod.productName}">Batom</td>
+                    <td th:text="${prod.variantName}">Vermelho</td>
+                    <td th:text="${prod.totalSold}">5</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    
+    <p style="font-size: 12px; color: #999;">Este é um e-mail automático do sistema Boutique Hygor & Ana.</p>
+</body>
+</html>

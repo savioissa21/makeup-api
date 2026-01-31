@@ -3,9 +3,12 @@ package com.hygor.makeup_api.model;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.SQLRestriction;
+import org.hibernate.envers.Audited;
+
 import java.math.BigDecimal;
 
 @Entity
+@Audited
 @Table(name = "product_variants")
 @SQLRestriction("deleted = false")
 @Getter @Setter

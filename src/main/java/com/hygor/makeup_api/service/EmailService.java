@@ -115,6 +115,27 @@ public class EmailService {
         }
     }
 
+    @Async
+    public void sendDailyReport(String to, com.hygor.makeup_api.dto.admin.DashboardResponse stats,
+            java.time.LocalDate date) {
+        log.info("Enviando relatório diário para: {}", to);
+
+        Context context = new Context();
+        context.setVariable("date", date);
+        context.setVariable("stats", stats);
+
+        // Formatação monetária simples para o template
+        context.setVariable("revenue", stats.getTotalRevenue());
+        context.setVariable("ticket", stats.getAverageTicket());
+
+        try {
+            String htmlContent = templateEngine.process("email/daily-report", context);
+            sendHtmlEmail(to, "Relatório Diário - " + date.toString(), htmlContent);
+        } catch (Exception e) {
+            log.error("Erro ao enviar relatório diário: {}", e.getMessage());
+        }
+    }
+
     /**
      * Método genérico para envio de e-mail HTML.
      */
