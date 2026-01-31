@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; }
+        .status-box { background-color: #e8f5e9; padding: 15px; border-radius: 5px; text-align: center; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Atualização do Pedido #<span th:text="${order.orderNumber}"></span></h2>
+        
+        <div class="status-box">
+            Novo Status: <span th:text="${order.status}">ENVIADO</span>
+        </div>
+
+        <div th:if="${order.trackingCode != null}">
+            <p>Código de Rastreio: <strong><span th:text="${order.trackingCode}"></span></strong></p>
+        </div>
+
+        <p>Acompanhe o seu pedido na nossa plataforma.</p>
+        <p>Atenciosamente,<br>Equipa Boutique</p>
+    </div>
+</body>
+</html>

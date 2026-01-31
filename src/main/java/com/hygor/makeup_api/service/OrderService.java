@@ -5,7 +5,7 @@ import com.hygor.makeup_api.dto.order.OrderResponse;
 import com.hygor.makeup_api.dto.shipping.ShippingOptionResponse;
 import com.hygor.makeup_api.exception.custom.BusinessException;
 import com.hygor.makeup_api.exception.custom.ResourceNotFoundException;
-import com.hygor.makeup_api.mapper.OrderMapper; // Injeção Crucial
+import com.hygor.makeup_api.mapper.OrderMapper;
 import com.hygor.makeup_api.model.*;
 import com.hygor.makeup_api.repository.*;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +29,8 @@ public class OrderService extends BaseService<Order, OrderRepository> {
     private final AddressRepository addressRepository;
     private final ShippingService shippingService;
     private final CartRepository cartRepository;
-    private final OrderMapper orderMapper; // A magia acontece aqui
+    private final OrderMapper orderMapper;
+    private final EmailService emailService; // Novo Serviço de E-mail
 
     public OrderService(OrderRepository repository,
                         ProductVariantRepository variantRepository,
@@ -37,7 +38,8 @@ public class OrderService extends BaseService<Order, OrderRepository> {
                         AddressRepository addressRepository,
                         ShippingService shippingService,
                         CartRepository cartRepository,
-                        OrderMapper orderMapper) {
+                        OrderMapper orderMapper,
+                        EmailService emailService) {
         super(repository);
         this.variantRepository = variantRepository;
         this.userRepository = userRepository;
@@ -45,6 +47,7 @@ public class OrderService extends BaseService<Order, OrderRepository> {
         this.shippingService = shippingService;
         this.cartRepository = cartRepository;
         this.orderMapper = orderMapper;
+        this.emailService = emailService;
     }
 
     @Transactional
@@ -108,14 +111,14 @@ public class OrderService extends BaseService<Order, OrderRepository> {
             // Incrementa uso do cupão
             Coupon coupon = cart.getCoupon();
             coupon.setUsedCount(coupon.getUsedCount() + 1);
-            // couponRepository.save(coupon); // O Cascade do Cart/JPA geralmente trata, mas salvar explícito é seguro
+            // couponRepository.save(coupon); // Cascade trata, mas salvar explícito é seguro
         } else {
             order.setDiscountAmount(BigDecimal.ZERO);
         }
 
         // 5. Frete Grátis
         BigDecimal finalShippingFee = shipping.getPrice();
-        BigDecimal freeShippingThreshold = new BigDecimal("200.00"); // Podes mover para config
+        BigDecimal freeShippingThreshold = new BigDecimal("200.00");
 
         if (subtotal.compareTo(freeShippingThreshold) >= 0) {
             finalShippingFee = BigDecimal.ZERO;
@@ -136,8 +139,12 @@ public class OrderService extends BaseService<Order, OrderRepository> {
             cartRepository.save(cart);
         }
 
+        // 7. NOTIFICAÇÃO POR E-MAIL (Async) 📧
+        OrderResponse response = orderMapper.toResponse(savedOrder);
+        emailService.sendOrderConfirmation(response);
+
         log.info("Pedido criado com sucesso: {} | Total: {}", savedOrder.getOrderNumber(), savedOrder.getTotalAmount());
-        return orderMapper.toResponse(savedOrder);
+        return response;
     }
 
     @Transactional
@@ -153,7 +160,11 @@ public class OrderService extends BaseService<Order, OrderRepository> {
 
         order.setStatus(OrderStatus.CANCELLED);
         Order saved = repository.save(order);
+        
         log.info("Pedido {} cancelado pelo utilizador.", orderNumber);
+        
+        // Notifica cancelamento (opcional, mas recomendado)
+        emailService.sendOrderStatusUpdate(orderMapper.toResponse(saved));
         
         return orderMapper.toResponse(saved);
     }
@@ -174,10 +185,13 @@ public class OrderService extends BaseService<Order, OrderRepository> {
 
         order.getPayment().setStatus(newPaymentStatus);
 
+        boolean statusChanged = false;
+
         switch (newPaymentStatus) {
             case APPROVED:
                 order.setStatus(OrderStatus.PROCESSING);
                 log.info("Pagamento APROVADO para pedido {}.", order.getOrderNumber());
+                statusChanged = true;
                 break;
             case CANCELLED:
             case REFUNDED:
@@ -185,11 +199,19 @@ public class OrderService extends BaseService<Order, OrderRepository> {
                 order.setStatus(OrderStatus.CANCELLED);
                 restoreStock(order);
                 log.info("Pagamento REJEITADO para pedido {}. Stock restaurado.", order.getOrderNumber());
+                statusChanged = true;
                 break;
             default:
                 break;
         }
-        repository.save(order);
+        
+        Order savedOrder = repository.save(order);
+
+        // NOTIFICAÇÃO POR E-MAIL (Async) 📧
+        // Envia apenas se houve mudança relevante de status (Aprovado ou Cancelado)
+        if (statusChanged) {
+            emailService.sendOrderStatusUpdate(orderMapper.toResponse(savedOrder));
+        }
     }
 
     // --- Métodos Auxiliares ---

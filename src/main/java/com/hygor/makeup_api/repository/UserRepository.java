@@ -16,4 +16,6 @@ public interface UserRepository extends BaseEntityRepository<User, Long> {
 
     // Verifica se um e-mail já está cadastrado para evitar duplicidade
     boolean existsByEmail(String email);
+
+    Optional<User> findByResetToken(String resetToken);
 }

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; }
+        .header { background-color: #f8f9fa; padding: 10px; text-align: center; }
+        .details { margin-top: 20px; }
+        .total { font-weight: bold; font-size: 1.2em; margin-top: 10px; }
+        .footer { font-size: 0.8em; color: #777; margin-top: 30px; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Obrigado pela sua compra! 🎉</h2>
+        </div>
+        <div class="details">
+            <p>Olá,</p>
+            <p>Recebemos o seu pedido <strong>#<span th:text="${order.orderNumber}">123</span></strong>.</p>
+            <p>Estamos aguardando a confirmação do pagamento para iniciar o envio.</p>
+            
+            <h3>Resumo:</h3>
+            <ul>
+                <li th:each="item : ${order.items}">
+                    <span th:text="${item.productName}">Produto</span> x <span th:text="${item.quantity}">1</span>
+                    - R$ <span th:text="${item.subtotal}">100.00</span>
+                </li>
+            </ul>
+            
+            <p class="total">Total: R$ <span th:text="${order.totalAmount}">200.00</span></p>
+            <p>Método de Pagamento: <span th:text="${order.paymentMethod}">PIX</span></p>
+        </div>
+        <div class="footer">
+            <p>Boutique Hygor & Ana Julia</p>
+        </div>
+    </div>
+</body>
+</html>
