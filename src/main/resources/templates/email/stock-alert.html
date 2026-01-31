@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head><style> .alert { color: red; font-weight: bold; } </style></head>
+<body>
+    <h2>⚠️ Alerta de Estoque Crítico</h2>
+    <p>O produto abaixo atingiu o nível mínimo de segurança:</p>
+    <ul>
+        <li>Produto: <strong th:text="${productName}">Batom</strong></li>
+        <li>SKU: <span th:text="${sku}">BAT-VERM</span></li>
+        <li class="alert">Restam apenas: <span th:text="${stock}">3</span> unidades</li>
+    </ul>
+    <p>Recomenda-se reposição imediata.</p>
+</body>
+</html>

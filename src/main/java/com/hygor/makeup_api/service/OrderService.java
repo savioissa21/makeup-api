@@ -33,13 +33,13 @@ public class OrderService extends BaseService<Order, OrderRepository> {
     private final EmailService emailService; // Novo Serviço de E-mail
 
     public OrderService(OrderRepository repository,
-                        ProductVariantRepository variantRepository,
-                        UserRepository userRepository,
-                        AddressRepository addressRepository,
-                        ShippingService shippingService,
-                        CartRepository cartRepository,
-                        OrderMapper orderMapper,
-                        EmailService emailService) {
+            ProductVariantRepository variantRepository,
+            UserRepository userRepository,
+            AddressRepository addressRepository,
+            ShippingService shippingService,
+            CartRepository cartRepository,
+            OrderMapper orderMapper,
+            EmailService emailService) {
         super(repository);
         this.variantRepository = variantRepository;
         this.userRepository = userRepository;
@@ -59,7 +59,8 @@ public class OrderService extends BaseService<Order, OrderRepository> {
         // 1. Valida Endereço e Calcula Frete
         Address address = addressRepository.findById(request.getAddressId())
                 .filter(a -> a.getUser().getEmail().equals(email))
-                .orElseThrow(() -> new ResourceNotFoundException("Endereço não encontrado ou não pertence ao usuário."));
+                .orElseThrow(
+                        () -> new ResourceNotFoundException("Endereço não encontrado ou não pertence ao usuário."));
 
         ShippingOptionResponse shipping = shippingService.calculateBestOption(address.getZipCode());
 
@@ -77,15 +78,26 @@ public class OrderService extends BaseService<Order, OrderRepository> {
         // 3. Processa Itens e Valida Stock (Crítico ⚠️)
         for (var itemRequest : request.getItems()) {
             ProductVariant variant = variantRepository.findById(itemRequest.getVariantId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Variação não encontrada ID: " + itemRequest.getVariantId()));
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Variação não encontrada ID: " + itemRequest.getVariantId()));
 
             if (variant.getStockQuantity() < itemRequest.getQuantity()) {
-                throw new BusinessException("Stock insuficiente para: " + variant.getProduct().getName() + " - " + variant.getName());
+                throw new BusinessException(
+                        "Stock insuficiente para: " + variant.getProduct().getName() + " - " + variant.getName());
             }
 
             // Baixa de Stock Atômica
-            variant.setStockQuantity(variant.getStockQuantity() - itemRequest.getQuantity());
+            int newStock = variant.getStockQuantity() - itemRequest.getQuantity();
+            variant.setStockQuantity(newStock);
             variantRepository.save(variant);
+
+            if (newStock <= 5) {
+                // Async: não trava o pedido
+                emailService.sendLowStockAlert(
+                        variant.getProduct().getName() + " - " + variant.getName(),
+                        variant.getSku(),
+                        newStock);
+            }
 
             OrderItem orderItem = OrderItem.builder()
                     .variant(variant)
@@ -103,15 +115,23 @@ public class OrderService extends BaseService<Order, OrderRepository> {
         // 4. Aplica Cupão do Carrinho
         BigDecimal discount = BigDecimal.ZERO;
         Cart cart = cartRepository.findByUserEmail(email).orElse(null);
-        
+
         if (cart != null && cart.getCoupon() != null && cart.getCoupon().isValid()) {
-            discount = subtotal.multiply(BigDecimal.valueOf(cart.getCoupon().getDiscountPercentage() / 100));
+
+            // 1. Calcula a porcentagem (Ex: 15 / 100 = 0.15)
+            BigDecimal percentage = BigDecimal.valueOf(cart.getCoupon().getDiscountPercentage())
+                    .divide(BigDecimal.valueOf(100));
+
+            // 2. Multiplica e ARREDONDA para 2 casas decimais (Padrao monetário)
+            discount = subtotal.multiply(percentage)
+                    .setScale(2, java.math.RoundingMode.HALF_UP);
+
             order.setDiscountAmount(discount);
-            
-            // Incrementa uso do cupão
+
+            // 3. Incrementa uso
             Coupon coupon = cart.getCoupon();
             coupon.setUsedCount(coupon.getUsedCount() + 1);
-            // couponRepository.save(coupon); // Cascade trata, mas salvar explícito é seguro
+
         } else {
             order.setDiscountAmount(BigDecimal.ZERO);
         }
@@ -160,12 +180,12 @@ public class OrderService extends BaseService<Order, OrderRepository> {
 
         order.setStatus(OrderStatus.CANCELLED);
         Order saved = repository.save(order);
-        
+
         log.info("Pedido {} cancelado pelo utilizador.", orderNumber);
-        
+
         // Notifica cancelamento (opcional, mas recomendado)
         emailService.sendOrderStatusUpdate(orderMapper.toResponse(saved));
-        
+
         return orderMapper.toResponse(saved);
     }
 
@@ -204,7 +224,7 @@ public class OrderService extends BaseService<Order, OrderRepository> {
             default:
                 break;
         }
-        
+
         Order savedOrder = repository.save(order);
 
         // NOTIFICAÇÃO POR E-MAIL (Async) 📧

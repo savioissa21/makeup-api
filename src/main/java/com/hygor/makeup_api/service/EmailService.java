@@ -28,6 +28,9 @@ public class EmailService {
     @Value("${app.mail.sender}")
     private String senderEmail;
 
+    @Value("${app.mail.admin}")
+    private String adminEmail;
+
     /**
      * Envia e-mail de confirmação de pedido (Async para não travar o checkout).
      * Renderiza o template 'order-confirmation.html'.
@@ -35,10 +38,11 @@ public class EmailService {
     @Async
     public void sendOrderConfirmation(OrderResponse order) {
         log.info("Iniciando envio de e-mail de confirmação para o pedido: {}", order.getOrderNumber());
-        
+
         Context context = new Context();
         context.setVariable("order", order);
-        context.setVariable("customerName", extractFirstName(order.getUserEmail())); // Idealmente o DTO teria o nome do cliente
+        context.setVariable("customerName", extractFirstName(order.getUserEmail())); // Idealmente o DTO teria o nome do
+                                                                                     // cliente
         context.setVariable("totalAmount", order.getTotalAmount()); // Garantia de acesso fácil no template
 
         try {
@@ -61,14 +65,15 @@ public class EmailService {
         context.setVariable("order", order);
         context.setVariable("status", translateStatus(order.getStatus().toString())); // Traduz para PT-BR se necessário
         context.setVariable("customerName", extractFirstName(order.getUserEmail()));
-        
+
         String subject = "Atualização do Pedido #" + order.getOrderNumber();
 
         try {
             String htmlContent = templateEngine.process("email/status-update", context);
             sendHtmlEmail(order.getUserEmail(), subject, htmlContent);
         } catch (Exception e) {
-            log.error("Falha ao enviar e-mail de atualização de status para pedido {}: {}", order.getOrderNumber(), e.getMessage());
+            log.error("Falha ao enviar e-mail de atualização de status para pedido {}: {}", order.getOrderNumber(),
+                    e.getMessage());
         }
     }
 
@@ -83,12 +88,30 @@ public class EmailService {
         Context context = new Context();
         context.setVariable("name", user.getFirstName());
         context.setVariable("token", token);
-        
+
         try {
             String htmlContent = templateEngine.process("email/password-recovery", context);
             sendHtmlEmail(user.getEmail(), "Recuperação de Senha - Boutique Hygor & Ana", htmlContent);
         } catch (Exception e) {
             log.error("Falha ao enviar e-mail de recuperação para {}: {}", user.getEmail(), e.getMessage());
+        }
+    }
+
+    @Async
+    public void sendLowStockAlert(String productName, String sku, Integer remainingStock) {
+        log.warn("STOCK CRÍTICO: {} (SKU: {}) restam apenas {}", productName, sku, remainingStock);
+
+        Context context = new Context();
+        context.setVariable("productName", productName);
+        context.setVariable("sku", sku);
+        context.setVariable("stock", remainingStock);
+
+        try {
+            // Crie um template simples 'email/stock-alert.html'
+            String html = templateEngine.process("email/stock-alert", context);
+            sendHtmlEmail(adminEmail, "ALERTA DE STOCK BAIXO: " + sku, html);
+        } catch (Exception e) {
+            log.error("Erro ao enviar alerta de stock", e);
         }
     }
 
@@ -98,7 +121,8 @@ public class EmailService {
     private void sendHtmlEmail(String to, String subject, String htmlBody) throws MessagingException {
         MimeMessage message = mailSender.createMimeMessage();
         // MULTIPART_MODE_MIXED_RELATED permite imagens inline e anexos se necessário
-        MimeMessageHelper helper = new MimeMessageHelper(message, MimeMessageHelper.MULTIPART_MODE_MIXED_RELATED, StandardCharsets.UTF_8.name());
+        MimeMessageHelper helper = new MimeMessageHelper(message, MimeMessageHelper.MULTIPART_MODE_MIXED_RELATED,
+                StandardCharsets.UTF_8.name());
 
         helper.setFrom(senderEmail);
         helper.setTo(to);
@@ -108,13 +132,15 @@ public class EmailService {
         mailSender.send(message);
         log.info("E-mail enviado com sucesso para: {}", to);
     }
-    
+
     /**
-     * Auxiliar para extrair o primeiro nome do e-mail caso não tenhamos o nome completo.
+     * Auxiliar para extrair o primeiro nome do e-mail caso não tenhamos o nome
+     * completo.
      * (Fallback simples, idealmente usar o nome do User se disponível)
      */
     private String extractFirstName(String email) {
-        if (email == null || !email.contains("@")) return "Cliente";
+        if (email == null || !email.contains("@"))
+            return "Cliente";
         String namePart = email.split("@")[0];
         // Capitaliza a primeira letra
         return namePart.substring(0, 1).toUpperCase() + namePart.substring(1);
@@ -125,14 +151,22 @@ public class EmailService {
      */
     private String translateStatus(String statusEnum) {
         switch (statusEnum) {
-            case "WAITING_PAYMENT": return "Aguardando Pagamento";
-            case "PAID": return "Pago";
-            case "APPROVED": return "Pagamento Aprovado";
-            case "PROCESSING": return "Em Processamento";
-            case "SHIPPED": return "Enviado";
-            case "DELIVERED": return "Entregue";
-            case "CANCELLED": return "Cancelado";
-            default: return statusEnum;
+            case "WAITING_PAYMENT":
+                return "Aguardando Pagamento";
+            case "PAID":
+                return "Pago";
+            case "APPROVED":
+                return "Pagamento Aprovado";
+            case "PROCESSING":
+                return "Em Processamento";
+            case "SHIPPED":
+                return "Enviado";
+            case "DELIVERED":
+                return "Entregue";
+            case "CANCELLED":
+                return "Cancelado";
+            default:
+                return statusEnum;
         }
     }
 }

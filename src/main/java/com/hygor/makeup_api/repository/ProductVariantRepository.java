@@ -10,4 +10,6 @@ public interface ProductVariantRepository extends BaseEntityRepository<ProductVa
     Optional<ProductVariant> findBySku(String sku);
 
     List<ProductVariant> findByProductId(Long productId);
+
+    Integer countByStockQuantityLessThan(Integer quantity);
 }
