@@ -2,6 +2,9 @@ package com.hygor.makeup_api.service;
 
 import com.hygor.makeup_api.dto.coupon.CouponRequest;
 import com.hygor.makeup_api.dto.coupon.CouponResponse;
+import com.hygor.makeup_api.exception.custom.BusinessException;
+import com.hygor.makeup_api.exception.custom.ResourceNotFoundException;
+import com.hygor.makeup_api.mapper.CouponMapper; // Injeção
 import com.hygor.makeup_api.model.Coupon;
 import com.hygor.makeup_api.repository.CouponRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -15,17 +18,17 @@ import java.util.stream.Collectors;
 @Slf4j
 public class CouponService extends BaseService<Coupon, CouponRepository> {
 
-    public CouponService(CouponRepository repository) {
+    private final CouponMapper couponMapper;
+
+    public CouponService(CouponRepository repository, CouponMapper couponMapper) {
         super(repository);
+        this.couponMapper = couponMapper;
     }
 
-    /**
-     * Cria um novo cupão a partir de um DTO e devolve a resposta formatada.
-     */
     @Transactional
     public CouponResponse createCoupon(CouponRequest request) {
         if (repository.findByCodeIgnoreCaseAndDeletedFalse(request.getCode()).isPresent()) {
-            throw new RuntimeException("Já existe um cupão ativo com este código.");
+            throw new BusinessException("Já existe um cupão ativo com o código: " + request.getCode());
         }
 
         Coupon coupon = Coupon.builder()
@@ -34,47 +37,26 @@ public class CouponService extends BaseService<Coupon, CouponRepository> {
                 .expirationDate(request.getExpirationDate())
                 .usageLimit(request.getUsageLimit())
                 .active(true)
+                .usedCount(0)
                 .build();
 
         Coupon saved = repository.save(coupon);
-        log.info("Novo cupão criado: {} com {}% de desconto", saved.getCode(), saved.getDiscountPercentage());
-        return mapToResponse(saved);
+        log.info("Novo cupão criado: {} ({}%)", saved.getCode(), saved.getDiscountPercentage());
+        
+        return couponMapper.toResponse(saved);
     }
 
-    /**
-     * Procura um cupão pelo código para validação na vitrine.
-     */
     @Transactional(readOnly = true)
     public CouponResponse findByCode(String code) {
-        Coupon coupon = repository.findByCodeIgnoreCaseAndDeletedFalse(code)
-                .orElseThrow(() -> new RuntimeException("Cupão não encontrado ou inexistente."));
-        return mapToResponse(coupon);
+        return repository.findByCodeIgnoreCaseAndDeletedFalse(code)
+                .map(couponMapper::toResponse)
+                .orElseThrow(() -> new ResourceNotFoundException("Cupão não encontrado: " + code));
     }
 
-    /**
-     * Lista todos os cupons ativos para o painel de administração.
-     */
     @Transactional(readOnly = true)
     public List<CouponResponse> getAllCoupons() {
         return repository.findAllByDeletedFalse().stream()
-                .map(this::mapToResponse)
+                .map(couponMapper::toResponse)
                 .collect(Collectors.toList());
-    }
-
-    /**
-     * Mapeador interno para seguir o padrão da boutique.
-     */
-    public CouponResponse mapToResponse(Coupon coupon) {
-        if (coupon == null) return null;
-        return CouponResponse.builder()
-                .id(coupon.getId())
-                .code(coupon.getCode())
-                .discountPercentage(coupon.getDiscountPercentage())
-                .expirationDate(coupon.getExpirationDate())
-                .active(coupon.isActive())
-                .usageLimit(coupon.getUsageLimit())
-                .usedCount(coupon.getUsedCount())
-                .valid(coupon.isValid())
-                .build();
     }
 }

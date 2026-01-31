@@ -7,9 +7,10 @@ import java.math.BigDecimal;
 @Data
 @Builder
 public class OrderItemResponse {
-    private Long variantId;      // Alterado de productId para variantId
+    private Long variantId;
     private String productName;
     private Integer quantity;
     private BigDecimal unitPrice;
     private BigDecimal subtotal;
+    private String image; // <--- ADICIONADO: Agora o Mapper tem onde guardar o 'imageUrl'
 }

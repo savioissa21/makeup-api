@@ -20,4 +20,10 @@ public interface AddressRepository extends BaseEntityRepository<Address, Long> {
      * Procura o endereço marcado como predefinido para um utilizador.
      */
     Optional<Address> findByUserIdAndIsDefaultTrue(Long userId);
+
+    /**
+     * Conta quantos endereços o utilizador tem (Útil para validar limites).
+     * O Spring Data implementa isto automaticamente com base no nome.
+     */
+    long countByUserEmail(String email);
 }

@@ -1,7 +1,6 @@
 package com.hygor.makeup_api.dto.variant;
 
 import java.math.BigDecimal;
-
 import lombok.Builder;
 import lombok.Data;
 
@@ -9,6 +8,7 @@ import lombok.Data;
 @Builder
 public class ProductVariantResponse {
     private Long id;
+    private Long productId; // <--- ADICIONADO (Faltava este campo)
     private String name;
     private String sku;
     private BigDecimal price;

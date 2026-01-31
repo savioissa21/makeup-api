@@ -2,7 +2,9 @@ package com.hygor.makeup_api.service;
 
 import com.hygor.makeup_api.dto.cart.CartItemRequest;
 import com.hygor.makeup_api.dto.cart.CartResponse;
-import com.hygor.makeup_api.dto.cart.CartItemResponse;
+import com.hygor.makeup_api.exception.custom.BusinessException;
+import com.hygor.makeup_api.exception.custom.ResourceNotFoundException;
+import com.hygor.makeup_api.mapper.CartMapper; // Injeção do Mapper
 import com.hygor.makeup_api.model.*;
 import com.hygor.makeup_api.repository.*;
 import lombok.extern.slf4j.Slf4j;
@@ -13,106 +15,112 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Optional;
 
 @Service
 @Slf4j
 public class CartService extends BaseService<Cart, CartRepository> {
 
-    // Alterado de ProductRepository para ProductVariantRepository
     private final ProductVariantRepository variantRepository;
     private final UserRepository userRepository;
     private final CartItemRepository cartItemRepository;
     private final CouponRepository couponRepository;
+    private final CartMapper cartMapper; // Mapper Injetado
 
     @Value("${boutique.shipping.free-threshold:200.00}")
     private BigDecimal freeShippingThreshold;
 
-    public CartService(CartRepository repository, 
-                       ProductVariantRepository variantRepository, 
-                       UserRepository userRepository, 
+    public CartService(CartRepository repository,
+                       ProductVariantRepository variantRepository,
+                       UserRepository userRepository,
                        CartItemRepository cartItemRepository,
-                       CouponRepository couponRepository) {
+                       CouponRepository couponRepository,
+                       CartMapper cartMapper) {
         super(repository);
         this.variantRepository = variantRepository;
         this.userRepository = userRepository;
         this.cartItemRepository = cartItemRepository;
         this.couponRepository = couponRepository;
+        this.cartMapper = cartMapper;
     }
 
     @Transactional
     public CartResponse addItemToCart(CartItemRequest request) {
         User user = getAuthenticatedUser();
         Cart cart = getOrCreateCart(user);
-        
-        // 1. Busca a Variante específica (SKU) em vez do produto genérico
-        ProductVariant variant = variantRepository.findById(request.getVariantId())
-                .orElseThrow(() -> new RuntimeException("Variação de produto não encontrada"));
 
-        // 2. Validação de estoque baseada na variante escolhida
+        // 1. Busca variante
+        ProductVariant variant = variantRepository.findById(request.getVariantId())
+                .orElseThrow(() -> new ResourceNotFoundException("Variação de produto não encontrada: " + request.getVariantId()));
+
+        // 2. Valida stock
         if (variant.getStockQuantity() < request.getQuantity()) {
-            throw new RuntimeException("Quantidade solicitada indisponível para esta cor/tom");
+            throw new BusinessException("Stock insuficiente para a variante: " + variant.getName());
         }
 
-        // 3. Filtra por variante no carrinho para evitar duplicados
-        CartItem cartItem = cart.getItems().stream()
+        // 3. Atualiza ou Cria Item
+        Optional<CartItem> existingItem = cart.getItems().stream()
                 .filter(item -> item.getVariant().getId().equals(variant.getId()))
-                .findFirst()
-                .orElse(null);
+                .findFirst();
 
-        if (cartItem != null) {
-            cartItem.setQuantity(cartItem.getQuantity() + request.getQuantity());
+        if (existingItem.isPresent()) {
+            CartItem item = existingItem.get();
+            item.setQuantity(item.getQuantity() + request.getQuantity());
         } else {
-            cartItem = CartItem.builder()
+            CartItem newItem = CartItem.builder()
                     .cart(cart)
                     .variant(variant)
                     .quantity(request.getQuantity())
                     .build();
-            cart.getItems().add(cartItem);
+            cart.getItems().add(newItem);
         }
 
         repository.save(cart);
-        log.info("Variação {} adicionada ao carrinho de {}", variant.getName(), user.getEmail());
-        
-        return mapToResponse(cart);
+        log.info("Item adicionado ao carrinho de: {}", user.getEmail());
+
+        return buildCartResponse(cart);
     }
 
     @Transactional(readOnly = true)
     public CartResponse getMyCart() {
         User user = getAuthenticatedUser();
         Cart cart = getOrCreateCart(user);
-        return mapToResponse(cart);
+        return buildCartResponse(cart);
     }
 
     @Transactional
     public CartResponse applyCoupon(String code) {
         User user = getAuthenticatedUser();
         Cart cart = getOrCreateCart(user);
-        
+
         Coupon coupon = couponRepository.findByCodeIgnoreCaseAndDeletedFalse(code)
-                .orElseThrow(() -> new RuntimeException("Cupão inválido ou inexistente."));
+                .orElseThrow(() -> new ResourceNotFoundException("Cupão inválido: " + code));
 
         if (!coupon.isValid()) {
-            throw new RuntimeException("Este cupão já expirou ou atingiu o limite de uso.");
+            throw new BusinessException("O cupão expirou ou atingiu o limite de uso.");
         }
 
         cart.setCoupon(coupon);
         repository.save(cart);
         
-        log.info("Cupão {} aplicado ao carrinho de {}", code, user.getEmail());
-        return mapToResponse(cart);
+        log.info("Cupão {} aplicado com sucesso.", code);
+        return buildCartResponse(cart);
     }
 
     @Transactional
     public void clearCart() {
         User user = getAuthenticatedUser();
         Cart cart = getOrCreateCart(user);
+        
         cartItemRepository.deleteAll(cart.getItems());
         cart.getItems().clear();
         cart.setCoupon(null);
+        
         repository.save(cart);
+        log.info("Carrinho limpo para: {}", user.getEmail());
     }
+
+    // --- Métodos Auxiliares ---
 
     private Cart getOrCreateCart(User user) {
         return repository.findByUserEmail(user.getEmail())
@@ -122,50 +130,63 @@ public class CartService extends BaseService<Cart, CartRepository> {
     private User getAuthenticatedUser() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         return userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Utilizador não autenticado"));
+                .orElseThrow(() -> new ResourceNotFoundException("Utilizador não encontrado no contexto de segurança."));
     }
 
     /**
-     * MAPEAMENTO: Refatorado para usar dados da Variant.
+     * Constrói a resposta final calculando totais e frete.
+     * Usamos o cartMapper para os itens, mas calculamos os totais aqui
+     * para garantir a lógica de negócio (Frete Grátis, etc).
      */
-    private CartResponse mapToResponse(Cart cart) {
-        List<CartItemResponse> items = cart.getItems().stream()
-                .map(item -> CartItemResponse.builder()
-                        .variantId(item.getVariant().getProduct().getId()) // ID do pai para referência
-                        .productName(item.getVariant().getProduct().getName() + " - " + item.getVariant().getName()) // Nome completo
-                        .productImageUrl(item.getVariant().getImageUrl()) // Foto da variante específica
-                        .quantity(item.getQuantity())
-                        .unitPrice(item.getVariant().getPrice()) // Preço da variante específica
-                        .subtotal(item.getVariant().getPrice().multiply(new BigDecimal(item.getQuantity())))
-                        .build())
-                .collect(Collectors.toList());
+    private CartResponse buildCartResponse(Cart cart) {
+        // Usa o Mapper para converter a estrutura básica (Items e Entidade Cart)
+        CartResponse response = cartMapper.toResponse(cart);
 
-        BigDecimal subtotal = items.stream()
-                .map(CartItemResponse::getSubtotal)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        // Recalcula totais para garantir precisão (lógica de negócio)
+        BigDecimal subtotal = calculateSubtotal(cart);
+        BigDecimal discount = calculateDiscount(cart, subtotal);
+        BigDecimal shippingFee = calculateShipping(subtotal);
+        BigDecimal total = subtotal.subtract(discount).add(shippingFee);
 
-        BigDecimal discount = BigDecimal.ZERO;
-        if (cart.getCoupon() != null && cart.getCoupon().isValid()) {
-            discount = subtotal.multiply(BigDecimal.valueOf(cart.getCoupon().getDiscountPercentage() / 100));
-        }
-
-        BigDecimal shippingFee = new BigDecimal("25.00");
-        String shippingMethod = "Correios (SEDEX/PAC)";
+        // Atualiza o DTO com os valores calculados
+        response.setSubtotal(subtotal);
+        response.setDiscountAmount(discount);
+        response.setShippingFee(shippingFee);
+        response.setTotalAmount(total);
         
-        if (subtotal.compareTo(freeShippingThreshold) >= 0) {
-            shippingFee = BigDecimal.ZERO;
-            shippingMethod += " - Grátis ✨";
+        // Define mensagem de frete
+        if (shippingFee.compareTo(BigDecimal.ZERO) == 0 && subtotal.compareTo(BigDecimal.ZERO) > 0) {
+            response.setShippingMethod("Correios (Grátis) ✨");
+        } else {
+            response.setShippingMethod("Correios (PAC/SEDEX)");
+        }
+        
+        // Garante que o código do cupão está na resposta
+        if (cart.getCoupon() != null) {
+            response.setAppliedCoupon(cart.getCoupon().getCode());
         }
 
-        return CartResponse.builder()
-                .items(items)
-                .subtotal(subtotal)
-                .discountAmount(discount)
-                .shippingFee(shippingFee)
-                .shippingMethod(shippingMethod)
-                .deliveryDays(7)
-                .totalAmount(subtotal.subtract(discount).add(shippingFee))
-                .appliedCoupon(cart.getCoupon() != null ? cart.getCoupon().getCode() : null)
-                .build();
+        return response;
+    }
+
+    private BigDecimal calculateSubtotal(Cart cart) {
+        return cart.getItems().stream()
+                .map(item -> item.getVariant().getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal calculateDiscount(Cart cart, BigDecimal subtotal) {
+        if (cart.getCoupon() != null && cart.getCoupon().isValid()) {
+            BigDecimal percentage = BigDecimal.valueOf(cart.getCoupon().getDiscountPercentage()).divide(BigDecimal.valueOf(100));
+            return subtotal.multiply(percentage);
+        }
+        return BigDecimal.ZERO;
+    }
+
+    private BigDecimal calculateShipping(BigDecimal subtotal) {
+        if (subtotal.compareTo(freeShippingThreshold) >= 0) {
+            return BigDecimal.ZERO;
+        }
+        return new BigDecimal("25.00"); // Frete Fixo
     }
 }

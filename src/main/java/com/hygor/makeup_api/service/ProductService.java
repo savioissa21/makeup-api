@@ -2,6 +2,8 @@ package com.hygor.makeup_api.service;
 
 import com.hygor.makeup_api.dto.product.ProductRequest;
 import com.hygor.makeup_api.dto.product.ProductResponse;
+import com.hygor.makeup_api.exception.custom.ResourceNotFoundException;
+import com.hygor.makeup_api.mapper.ProductMapper; // Novo
 import com.hygor.makeup_api.model.Brand;
 import com.hygor.makeup_api.model.Category;
 import com.hygor.makeup_api.model.Product;
@@ -18,7 +20,6 @@ import java.math.BigDecimal;
 import java.text.Normalizer;
 import java.util.Locale;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -26,41 +27,32 @@ public class ProductService extends BaseService<Product, ProductRepository> {
 
     private final CategoryRepository categoryRepository;
     private final BrandRepository brandRepository;
-    
-    private final BrandService brandService;
-    private final CategoryService categoryService;
-    private final ProductVariantService variantService;
+    private final ProductMapper productMapper; // A estrela do show ⭐
 
     private static final Pattern NONLATIN = Pattern.compile("[^\\w-]");
     private static final Pattern WHITESPACE = Pattern.compile("[\\s]");
 
+    // Construtor muito mais leve!
     public ProductService(ProductRepository repository,
                          CategoryRepository categoryRepository,
                          BrandRepository brandRepository,
-                         BrandService brandService,
-                         CategoryService categoryService,
-                         ProductVariantService variantService) {
+                         ProductMapper productMapper) {
         super(repository);
         this.categoryRepository = categoryRepository;
         this.brandRepository = brandRepository;
-        this.brandService = brandService;
-        this.categoryService = categoryService;
-        this.variantService = variantService;
+        this.productMapper = productMapper;
     }
 
-    /**
-     * Cria um novo produto. 
-     * Nota: O estoque inicial agora deve ser gerenciado via ProductVariantController.
-     */
     @Transactional
     public ProductResponse createProduct(ProductRequest request) {
         log.info("Iniciando criação do produto: {}", request.getName());
 
+        // Usamos ResourceNotFoundException para dar 404 se falhar
         Category category = categoryRepository.findById(request.getCategoryId())
-                .orElseThrow(() -> new RuntimeException("Categoria não encontrada com ID: " + request.getCategoryId()));
+                .orElseThrow(() -> new ResourceNotFoundException("Categoria não encontrada ID: " + request.getCategoryId()));
 
         Brand brand = brandRepository.findById(request.getBrandId())
-                .orElseThrow(() -> new RuntimeException("Marca não encontrada com ID: " + request.getBrandId()));
+                .orElseThrow(() -> new ResourceNotFoundException("Marca não encontrada ID: " + request.getBrandId()));
 
         Product product = Product.builder()
                 .name(request.getName())
@@ -68,7 +60,6 @@ public class ProductService extends BaseService<Product, ProductRepository> {
                 .description(request.getDescription())
                 .price(request.getPrice())
                 .discountPrice(request.getDiscountPrice())
-                // O campo stockQuantity foi removido da entidade Product para evitar divergência
                 .imagePrompt(request.getImagePrompt())
                 .rating(0.0)
                 .slug(generateSlug(request.getName()))
@@ -76,8 +67,9 @@ public class ProductService extends BaseService<Product, ProductRepository> {
                 .build();
 
         Product saved = repository.save(product);
-        log.info("Produto criado com sucesso: {} (Slug: {})", saved.getName(), saved.getSlug());
-        return toResponse(saved);
+        
+        // Uma linha mágica substitui 20 linhas de conversão manual
+        return productMapper.toResponse(saved);
     }
 
     @Transactional(readOnly = true)
@@ -87,53 +79,25 @@ public class ProductService extends BaseService<Product, ProductRepository> {
 
         if (brandName != null && minPrice != null && maxPrice != null) {
             return repository
-                    .findByBrandNameIgnoreCaseAndPriceBetweenAndRatingGreaterThanEqual(brandName, minPrice, maxPrice,
-                            rating, pageable)
-                    .map(this::toResponse);
+                    .findByBrandNameIgnoreCaseAndPriceBetweenAndRatingGreaterThanEqual(brandName, minPrice, maxPrice, rating, pageable)
+                    .map(productMapper::toResponse);
         }
 
-        return repository.findAll(pageable).map(this::toResponse);
+        return repository.findAll(pageable).map(productMapper::toResponse);
     }
-
-    // O método updateStock agora deve ser feito via Variação (SKU), 
-    // pois o estoque do Produto é apenas a soma das variações.
 
     @Transactional(readOnly = true)
     public ProductResponse findBySlug(String slug) {
         return repository.findBySlug(slug)
-                .map(this::toResponse)
-                .orElseThrow(() -> new RuntimeException("Produto não encontrado com o slug: " + slug));
+                .map(productMapper::toResponse)
+                .orElseThrow(() -> new ResourceNotFoundException("Produto não encontrado: " + slug));
     }
 
     @Transactional
     public ProductResponse updateProductImage(Long id, String imageUrl) {
         Product product = findActiveById(id);
         product.setImageUrl(imageUrl);
-        return toResponse(repository.save(product));
-    }
-
-    /**
-     * Converte a Entidade para DTO - Centralizado.
-     * Implementa a Sincronização de Estoque Total (Soma de SKUs).
-     */
-    public ProductResponse toResponse(Product product) {
-        return ProductResponse.builder()
-                .id(product.getId())
-                .name(product.getName())
-                .slug(product.getSlug())
-                .description(product.getDescription())
-                .price(product.getPrice())
-                .discountPrice(product.getDiscountPrice())
-                .rating(product.getRating())
-                .imageUrl(product.getImageUrl())
-                // CHAVE DA SINCRONIZAÇÃO: Calcula o estoque total somando as variantes 💎
-                .totalStock(product.getTotalStockQuantity()) 
-                .brand(brandService.mapToResponse(product.getBrand()))
-                .category(categoryService.mapToResponse(product.getCategory()))
-                .variants(product.getVariants().stream()
-                        .map(variantService::toResponse)
-                        .collect(Collectors.toList()))
-                .build();
+        return productMapper.toResponse(repository.save(product));
     }
 
     private String generateSlug(String input) {

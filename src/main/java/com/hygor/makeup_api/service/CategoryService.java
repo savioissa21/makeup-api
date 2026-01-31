@@ -2,6 +2,9 @@ package com.hygor.makeup_api.service;
 
 import com.hygor.makeup_api.dto.category.CategoryRequest;
 import com.hygor.makeup_api.dto.category.CategoryResponse;
+import com.hygor.makeup_api.exception.custom.BusinessException;
+import com.hygor.makeup_api.exception.custom.ResourceNotFoundException;
+import com.hygor.makeup_api.mapper.CategoryMapper; // Novo
 import com.hygor.makeup_api.model.Category;
 import com.hygor.makeup_api.repository.CategoryRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -18,72 +21,49 @@ import java.util.stream.Collectors;
 @Slf4j
 public class CategoryService extends BaseService<Category, CategoryRepository> {
 
+    private final CategoryMapper categoryMapper; // Injeção do Mapper
+    
     private static final Pattern NONLATIN = Pattern.compile("[^\\w-]");
     private static final Pattern WHITESPACE = Pattern.compile("[\\s]");
 
-    public CategoryService(CategoryRepository repository) {
+    public CategoryService(CategoryRepository repository, CategoryMapper categoryMapper) {
         super(repository);
+        this.categoryMapper = categoryMapper;
     }
 
-    /**
-     * Cria uma nova categoria com geração automática de slug.
-     */
     @Transactional
     public CategoryResponse createCategory(CategoryRequest request) {
-        // 1. Validação de duplicidade por nome
         if (repository.existsByName(request.getName())) {
-            throw new RuntimeException("Já existe uma categoria com o nome: " + request.getName());
+            throw new BusinessException("Já existe uma categoria com o nome: " + request.getName());
         }
 
-        // 2. Construção da entidade com Slug automático para SEO
         Category category = Category.builder()
                 .name(request.getName())
                 .description(request.getDescription())
                 .slug(generateSlug(request.getName()))
                 .build();
 
-        Category saved = repository.save(category);
-        log.info("Categoria criada com sucesso: {} (Slug: {})", saved.getName(), saved.getSlug());
-        
-        return mapToResponse(saved);
+        return categoryMapper.toResponse(repository.save(category));
     }
 
-    /**
-     * Lista todas as categorias ativas convertidas para DTO.
-     */
     @Transactional(readOnly = true)
     public List<CategoryResponse> getAllCategories() {
         return repository.findAllByDeletedFalse().stream()
-                .map(this::mapToResponse)
+                .map(categoryMapper::toResponse) // Method Reference limpo
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Busca uma categoria pelo slug para filtros na vitrine.
-     */
     @Transactional(readOnly = true)
     public CategoryResponse getBySlug(String slug) {
-        Category category = repository.findBySlug(slug)
-                .orElseThrow(() -> new RuntimeException("Categoria não encontrada com o slug: " + slug));
-        return mapToResponse(category);
+        return repository.findBySlug(slug)
+                .map(categoryMapper::toResponse)
+                .orElseThrow(() -> new ResourceNotFoundException("Categoria não encontrada com o slug: " + slug));
     }
 
-    /**
-     * Gerador de Slug (Igual ao do ProductService para manter consistência).
-     */
     private String generateSlug(String input) {
         String nowhitespace = WHITESPACE.matcher(input).replaceAll("-");
         String normalized = Normalizer.normalize(nowhitespace, Normalizer.Form.NFD);
         String slug = NONLATIN.matcher(normalized).replaceAll("");
         return slug.toLowerCase(Locale.ENGLISH);
-    }
-
-    public CategoryResponse mapToResponse(Category category) {
-        return CategoryResponse.builder()
-                .id(category.getId())
-                .name(category.getName())
-                .slug(category.getSlug())
-                .description(category.getDescription())
-                .build();
     }
 }

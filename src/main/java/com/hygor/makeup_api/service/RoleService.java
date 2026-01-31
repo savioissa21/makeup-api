@@ -2,62 +2,61 @@ package com.hygor.makeup_api.service;
 
 import com.hygor.makeup_api.dto.role.RoleRequest;
 import com.hygor.makeup_api.dto.role.RoleResponse;
+import com.hygor.makeup_api.exception.custom.BusinessException;
+import com.hygor.makeup_api.exception.custom.ResourceNotFoundException;
+import com.hygor.makeup_api.mapper.RoleMapper; // Injeção
 import com.hygor.makeup_api.model.Role;
 import com.hygor.makeup_api.repository.PermissionRepository;
 import com.hygor.makeup_api.repository.RoleRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
-import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 public class RoleService extends BaseService<Role, RoleRepository> {
 
     private final PermissionRepository permissionRepository;
+    private final RoleMapper roleMapper; // Injeção
 
-    public RoleService(RoleRepository repository, PermissionRepository permissionRepository) {
+    public RoleService(RoleRepository repository, 
+                       PermissionRepository permissionRepository,
+                       RoleMapper roleMapper) {
         super(repository);
         this.permissionRepository = permissionRepository;
+        this.roleMapper = roleMapper;
     }
 
     @Transactional
     public RoleResponse createRole(RoleRequest request) {
-        // 1. Validação de duplicidade
+        // Validação
         if (repository.findByName(request.getName()).isPresent()) {
-            throw new RuntimeException("Este papel já existe no sistema.");
+            throw new BusinessException("Este papel já existe no sistema: " + request.getName());
         }
 
-        // 2. Padronização: garante que comece com ROLE_
+        // Padronização (ROLE_...)
         String roleName = request.getName().toUpperCase();
         if (!roleName.startsWith("ROLE_")) {
             roleName = "ROLE_" + roleName;
         }
 
-        // 3. Busca e associa as permissões
         Role role = Role.builder()
                 .name(roleName)
                 .permissions(new HashSet<>(permissionRepository.findAllById(request.getPermissionIds())))
                 .build();
 
         Role saved = repository.save(role);
-        return mapToResponse(saved);
+        log.info("Novo papel criado: {}", saved.getName());
+        
+        return roleMapper.toResponse(saved);
     }
 
     @Transactional(readOnly = true)
     public RoleResponse findByName(String name) {
-        Role role = repository.findByName(name)
-                .orElseThrow(() -> new RuntimeException("Papel não encontrado: " + name));
-        return mapToResponse(role);
-    }
-
-    private RoleResponse mapToResponse(Role role) {
-        return RoleResponse.builder()
-                .id(role.getId())
-                .name(role.getName())
-                .permissions(role.getPermissions().stream()
-                        .map(p -> p.getName())
-                        .collect(Collectors.toSet()))
-                .build();
+        return repository.findByName(name)
+                .map(roleMapper::toResponse)
+                .orElseThrow(() -> new ResourceNotFoundException("Papel não encontrado: " + name));
     }
 }

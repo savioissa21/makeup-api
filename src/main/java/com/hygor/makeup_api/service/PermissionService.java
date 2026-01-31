@@ -2,6 +2,9 @@ package com.hygor.makeup_api.service;
 
 import com.hygor.makeup_api.dto.role.PermissionRequest;
 import com.hygor.makeup_api.dto.role.PermissionResponse;
+import com.hygor.makeup_api.exception.custom.BusinessException;
+import com.hygor.makeup_api.exception.custom.ResourceNotFoundException;
+import com.hygor.makeup_api.mapper.PermissionMapper; // Injeção
 import com.hygor.makeup_api.model.Permission;
 import com.hygor.makeup_api.repository.PermissionRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -15,54 +18,43 @@ import java.util.stream.Collectors;
 @Slf4j
 public class PermissionService extends BaseService<Permission, PermissionRepository> {
 
-    public PermissionService(PermissionRepository repository) {
+    private final PermissionMapper permissionMapper;
+
+    public PermissionService(PermissionRepository repository, PermissionMapper permissionMapper) {
         super(repository);
+        this.permissionMapper = permissionMapper;
     }
 
-    /**
-     * Cria uma nova permissão com padronização para caixa alta.
-     */
     @Transactional
     public PermissionResponse createPermission(PermissionRequest request) {
         String permissionName = request.getName().toUpperCase().replace(" ", "_");
 
         if (repository.findByName(permissionName).isPresent()) {
-            throw new RuntimeException("Esta permissão já existe: " + permissionName);
+            throw new BusinessException("Esta permissão já existe: " + permissionName);
         }
 
         Permission permission = Permission.builder()
                 .name(permissionName)
+                // Se o DTO tiver description, podes adicionar: .description(request.getDescription())
                 .build();
 
         Permission saved = repository.save(permission);
         log.info("Nova permissão criada: {}", saved.getName());
-        return mapToResponse(saved);
+        
+        return permissionMapper.toResponse(saved);
     }
 
-    /**
-     * Busca uma permissão pelo nome.
-     */
     @Transactional(readOnly = true)
     public PermissionResponse getByName(String name) {
-        Permission permission = repository.findByName(name.toUpperCase())
-                .orElseThrow(() -> new RuntimeException("Permissão não encontrada: " + name));
-        return mapToResponse(permission);
+        return repository.findByName(name.toUpperCase())
+                .map(permissionMapper::toResponse)
+                .orElseThrow(() -> new ResourceNotFoundException("Permissão não encontrada: " + name));
     }
 
-    /**
-     * Lista todas as permissões ativas.
-     */
     @Transactional(readOnly = true)
     public List<PermissionResponse> getAllPermissions() {
         return repository.findAllByDeletedFalse().stream()
-                .map(this::mapToResponse)
+                .map(permissionMapper::toResponse)
                 .collect(Collectors.toList());
-    }
-
-    private PermissionResponse mapToResponse(Permission permission) {
-        return PermissionResponse.builder()
-                .id(permission.getId())
-                .name(permission.getName())
-                .build();
     }
 }

@@ -1,51 +1,46 @@
 package com.hygor.makeup_api.service;
 
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import com.hygor.makeup_api.dto.brand.BrandRequest;
 import com.hygor.makeup_api.dto.brand.BrandResponse;
+import com.hygor.makeup_api.exception.custom.BusinessException;
+import com.hygor.makeup_api.mapper.BrandMapper; // Novo
 import com.hygor.makeup_api.model.Brand;
 import com.hygor.makeup_api.repository.BrandRepository;
-
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @Slf4j
 public class BrandService extends BaseService<Brand, BrandRepository> {
 
-    public BrandService(BrandRepository repository) {
+    private final BrandMapper brandMapper; // Injeção do Mapper
+
+    public BrandService(BrandRepository repository, BrandMapper brandMapper) {
         super(repository);
+        this.brandMapper = brandMapper;
     }
 
     @Transactional
     public BrandResponse createBrand(BrandRequest request) {
         if (repository.existsByName(request.getName())) {
-            throw new RuntimeException("Já existe uma marca com este nome.");
+            // Exceção correta: Retorna 422 Unprocessable Entity
+            throw new BusinessException("Já existe uma marca com este nome.");
         }
 
         Brand brand = Brand.builder()
                 .name(request.getName())
                 .description(request.getDescription())
                 .logoUrl(request.getLogoUrl())
-                .slug(generateSlug(request.getName())) // Usa o mesmo gerador do ProductService
+                .slug(generateSlug(request.getName()))
                 .build();
 
-        return mapToResponse(repository.save(brand));
+        // O Mapper faz a conversão automática 🪄
+        return brandMapper.toResponse(repository.save(brand));
     }
 
-    public BrandResponse mapToResponse(Brand brand) {
-        return BrandResponse.builder()
-                .id(brand.getId())
-                .name(brand.getName())
-                .slug(brand.getSlug())
-                .description(brand.getDescription())
-                .logoUrl(brand.getLogoUrl())
-                .build();
-    }
-    
+    // Método auxiliar para gerar slug (podes mover para uma classe utilitária depois)
     private String generateSlug(String input) {
-        // Lógica de normalização idêntica à do CategoryService
         return input.toLowerCase().replaceAll("\\s+", "-").replaceAll("[^\\w-]", "");
     }
 }
