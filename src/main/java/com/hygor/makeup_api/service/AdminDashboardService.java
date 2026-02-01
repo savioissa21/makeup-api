@@ -6,6 +6,11 @@ import com.hygor.makeup_api.model.OrderStatus;
 import com.hygor.makeup_api.repository.OrderRepository;
 import com.hygor.makeup_api.repository.ProductVariantRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.cache.annotation.Cacheable;
+
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,6 +22,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class AdminDashboardService {
 
@@ -63,6 +69,7 @@ public class AdminDashboardService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(value = "dashboard_stats", key = "#startDate.toString() + '_' + #endDate.toString()")
     public DashboardResponse getDashboardStats(LocalDate startDate, LocalDate endDate) {
         // Se não informar datas, assume o mês atual (padrão)
         LocalDateTime start = (startDate != null) ? startDate.atStartOfDay()
@@ -95,5 +102,10 @@ public class AdminDashboardService {
                 .lowStockCount(lowStockCount)
                 .topSellingProducts(topProducts)
                 .build();
+    }
+
+    @CacheEvict(value = "dashboard_stats", allEntries = true)
+    public void clearDashboardCache() {
+        log.info("Cache do dashboard limpo pelo admin.");
     }
 }

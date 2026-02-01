@@ -1,5 +1,6 @@
 package com.hygor.makeup_api.service;
 
+import com.hygor.makeup_api.exception.custom.ResourceNotFoundException;
 import com.hygor.makeup_api.model.BaseEntity;
 import com.hygor.makeup_api.repository.BaseEntityRepository;
 import lombok.RequiredArgsConstructor;
@@ -40,5 +41,13 @@ public abstract class BaseService<T extends BaseEntity, R extends BaseEntityRepo
     @Transactional(readOnly = true)
     public boolean existsActive(Long id) {
         return repository.existsByIdAndDeletedFalse(id); //
+    }
+
+    @Transactional
+    public void delete(Long id) {
+        if (!repository.existsById(id)) {
+            throw new ResourceNotFoundException("Registro não encontrado ID: " + id);
+        }
+        repository.deleteById(id);
     }
 }
