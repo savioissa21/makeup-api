@@ -4,6 +4,7 @@ import com.hygor.makeup_api.dto.order.OrderRequest;
 import com.hygor.makeup_api.dto.order.OrderResponse;
 import com.hygor.makeup_api.dto.payment.MercadoPagoWebhookDTO;
 import com.hygor.makeup_api.dto.payment.PaymentRequest;
+import com.hygor.makeup_api.gateway.dto.PaymentGatewayResponse; // Importante
 import com.hygor.makeup_api.mapper.PaymentMapper;
 import com.hygor.makeup_api.model.Payment;
 import com.hygor.makeup_api.service.OrderService;
@@ -15,6 +16,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.Map;
 
 @RestController
@@ -50,26 +52,31 @@ public class OrderController {
 
     @PostMapping("/pay")
     public ResponseEntity<?> generatePayment(@RequestBody @Valid PaymentRequest request) {
-        // 1. Converte DTO -> Entidade (Amount e Status são ignorados pelo Mapper por segurança)
+        // 1. Converte DTO -> Entidade
         Payment payment = paymentMapper.toEntity(request);
         
-        // 2. Busca o pedido para pegar o valor real
+        // 2. Busca o pedido para garantir consistência de valores
         var order = orderService.findEntityByOrderNumber(request.getOrderNumber());
         payment.setAmount(order.getTotalAmount());
 
         try {
-            // 3. Gera Pix (Por enquanto só Pix, mas pronto para expansão)
-            var mpPayment = paymentService.createPixPayment(payment, order.getCustomer().getEmail());
+            // 3. Gera Pix (Agora retorna nosso PaymentGatewayResponse limpo)
+            PaymentGatewayResponse gatewayResponse = paymentService.createPixPayment(payment, order.getCustomer().getEmail());
             
-            // 4. Atualiza o pedido com o pagamento criado
+            // 4. Atualiza o pedido com o ID externo gerado
             order.setPayment(payment);
             orderService.saveOrder(order);
 
-            return ResponseEntity.ok(Map.of(
-                "qr_code", mpPayment.getPointOfInteraction().getTransactionData().getQrCode(),
-                "qr_code_base64", mpPayment.getPointOfInteraction().getTransactionData().getQrCodeBase64(),
-                "ticket_url", mpPayment.getPointOfInteraction().getTransactionData().getTicketUrl()
-            ));
+            // 5. Retorna o mapa simples. Olha como ficou mais fácil! 👇
+            Map<String, String> response = new HashMap<>();
+            response.put("qr_code", gatewayResponse.getQrCode());
+            response.put("qr_code_base64", gatewayResponse.getQrCodeBase64());
+            response.put("ticket_url", gatewayResponse.getTicketUrl());
+            response.put("external_id", gatewayResponse.getExternalId());
+            response.put("status", gatewayResponse.getStatus());
+
+            return ResponseEntity.ok(response);
+
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Erro ao gerar pagamento: " + e.getMessage());
         }
@@ -77,6 +84,7 @@ public class OrderController {
 
     @PostMapping("/webhook/payment")
     public ResponseEntity<Void> handlePaymentWebhook(@RequestBody MercadoPagoWebhookDTO webhook) {
+        // O Service já cuida de tudo
         paymentService.processWebhook(webhook);
         return ResponseEntity.ok().build();
     }

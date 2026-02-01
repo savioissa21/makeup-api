@@ -3,6 +3,7 @@ package com.hygor.makeup_api.service;
 import com.hygor.makeup_api.dto.product.ProductRequest;
 import com.hygor.makeup_api.dto.product.ProductResponse;
 import com.hygor.makeup_api.exception.custom.ResourceNotFoundException;
+import com.hygor.makeup_api.gateway.FileStorageGateway;
 import com.hygor.makeup_api.mapper.ProductMapper;
 import com.hygor.makeup_api.model.Brand;
 import com.hygor.makeup_api.model.Category;
@@ -17,6 +18,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.text.Normalizer;
@@ -30,18 +32,21 @@ public class ProductService extends BaseService<Product, ProductRepository> {
     private final CategoryRepository categoryRepository;
     private final BrandRepository brandRepository;
     private final ProductMapper productMapper;
+    private final FileStorageGateway fileStorageGateway;
 
     private static final Pattern NONLATIN = Pattern.compile("[^\\w-]");
     private static final Pattern WHITESPACE = Pattern.compile("[\\s]");
 
     public ProductService(ProductRepository repository,
-                          CategoryRepository categoryRepository,
-                          BrandRepository brandRepository,
-                          ProductMapper productMapper) {
+            CategoryRepository categoryRepository,
+            BrandRepository brandRepository,
+            ProductMapper productMapper,
+            FileStorageGateway fileStorageGateway) {
         super(repository);
         this.categoryRepository = categoryRepository;
         this.brandRepository = brandRepository;
         this.productMapper = productMapper;
+        this.fileStorageGateway = fileStorageGateway;
     }
 
     // --- LEITURAS (CACHEABLE) ---
@@ -60,7 +65,8 @@ public class ProductService extends BaseService<Product, ProductRepository> {
     }
 
     @Transactional(readOnly = true)
-    // Slug geralmente não cacheamos aqui ou criamos um cache separado "product_slug"
+    // Slug geralmente não cacheamos aqui ou criamos um cache separado
+    // "product_slug"
     public ProductResponse findBySlug(String slug) {
         return repository.findBySlug(slug)
                 .map(productMapper::toResponse)
@@ -69,13 +75,15 @@ public class ProductService extends BaseService<Product, ProductRepository> {
 
     @Transactional(readOnly = true)
     public Page<ProductResponse> getFilteredProducts(String brandName, BigDecimal minPrice, BigDecimal maxPrice,
-                                                     Double minRating, Pageable pageable) {
-        // Filtros dinâmicos são difíceis de cachear efetivamente devido às infinitas combinações
+            Double minRating, Pageable pageable) {
+        // Filtros dinâmicos são difíceis de cachear efetivamente devido às infinitas
+        // combinações
         Double rating = (minRating == null) ? 0.0 : minRating;
 
         if (brandName != null && minPrice != null && maxPrice != null) {
             return repository
-                    .findByBrandNameIgnoreCaseAndPriceBetweenAndRatingGreaterThanEqual(brandName, minPrice, maxPrice, rating, pageable)
+                    .findByBrandNameIgnoreCaseAndPriceBetweenAndRatingGreaterThanEqual(brandName, minPrice, maxPrice,
+                            rating, pageable)
                     .map(productMapper::toResponse);
         }
         return repository.findAll(pageable).map(productMapper::toResponse);
@@ -89,7 +97,8 @@ public class ProductService extends BaseService<Product, ProductRepository> {
         log.info("Criando produto: {}", request.getName());
 
         Category category = categoryRepository.findById(request.getCategoryId())
-                .orElseThrow(() -> new ResourceNotFoundException("Categoria não encontrada ID: " + request.getCategoryId()));
+                .orElseThrow(
+                        () -> new ResourceNotFoundException("Categoria não encontrada ID: " + request.getCategoryId()));
 
         Brand brand = brandRepository.findById(request.getBrandId())
                 .orElseThrow(() -> new ResourceNotFoundException("Marca não encontrada ID: " + request.getBrandId()));
@@ -117,7 +126,8 @@ public class ProductService extends BaseService<Product, ProductRepository> {
         Product product = findActiveById(id); // Garante que existe e não está deletado
 
         Category category = categoryRepository.findById(request.getCategoryId())
-                .orElseThrow(() -> new ResourceNotFoundException("Categoria não encontrada ID: " + request.getCategoryId()));
+                .orElseThrow(
+                        () -> new ResourceNotFoundException("Categoria não encontrada ID: " + request.getCategoryId()));
 
         Brand brand = brandRepository.findById(request.getBrandId())
                 .orElseThrow(() -> new ResourceNotFoundException("Marca não encontrada ID: " + request.getBrandId()));
@@ -130,19 +140,33 @@ public class ProductService extends BaseService<Product, ProductRepository> {
         product.setImagePrompt(request.getImagePrompt());
         product.setCategory(category);
         product.setBrand(brand);
-        
+
         // Se o nome mudar, regenera o slug (Opcional, mas bom para SEO)
         if (!product.getName().equals(request.getName())) {
-             product.setSlug(generateSlug(request.getName()));
+            product.setSlug(generateSlug(request.getName()));
         }
 
         return productMapper.toResponse(repository.save(product));
     }
-    
+
     @Transactional
-    @CacheEvict(value = { "products", "product_details" }, allEntries = true)
-    public ProductResponse updateProductImage(Long id, String imageUrl) {
+    @CacheEvict(value = { "products", "product_details" }, allEntries = true) // <--- ADICIONADO AQUI
+    public ProductResponse updateProductImage(Long id, MultipartFile file) {
+        log.info("Atualizando imagem do produto ID: {}", id);
+
         Product product = findActiveById(id);
+
+        // 1. Upload da nova imagem (Cloudinary/S3)
+        // O Gateway já cuida de gerar nome único e retornar a URL segura
+        String imageUrl = fileStorageGateway.uploadFile(file, "products");
+
+        // 2. Remove a imagem antiga do Cloudinary para não ocupar espaço à toa
+        // (Opcional, mas recomendado)
+        if (product.getImageUrl() != null && !product.getImageUrl().isEmpty()) {
+            fileStorageGateway.deleteFile(product.getImageUrl());
+        }
+
+        // 3. Atualiza no banco
         product.setImageUrl(imageUrl);
         return productMapper.toResponse(repository.save(product));
     }
@@ -159,7 +183,8 @@ public class ProductService extends BaseService<Product, ProductRepository> {
     // --- UTILITÁRIOS ---
 
     private String generateSlug(String input) {
-        if (input == null) return "";
+        if (input == null)
+            return "";
         String nowhitespace = WHITESPACE.matcher(input).replaceAll("-");
         String normalized = Normalizer.normalize(nowhitespace, Normalizer.Form.NFD);
         String slug = NONLATIN.matcher(normalized).replaceAll("");

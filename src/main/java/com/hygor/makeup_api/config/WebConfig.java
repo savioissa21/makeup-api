@@ -4,6 +4,7 @@ import com.hygor.makeup_api.interceptor.RateLimitInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
@@ -16,7 +17,15 @@ public class WebConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         // Aplica o Rate Limit em TUDO (/api/**)
         registry.addInterceptor(rateLimitInterceptor)
-                .addPathPatterns("/api/**"); 
-                // Se quiser excluir swagger ou static resources: .excludePathPatterns("/swagger-ui/**")
+                .addPathPatterns("/api/**");
+        // Se quiser excluir swagger ou static resources:
+        // .excludePathPatterns("/swagger-ui/**")
+    }
+
+    @Override
+    public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        // Libera acesso: http://localhost:8080/uploads/...
+        registry.addResourceHandler("/uploads/**")
+                .addResourceLocations("file:uploads/");
     }
 }

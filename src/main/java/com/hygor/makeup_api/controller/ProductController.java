@@ -1,7 +1,6 @@
 package com.hygor.makeup_api.controller;
 
 import com.hygor.makeup_api.dto.product.ProductResponse;
-import com.hygor.makeup_api.service.FileStorageService;
 import com.hygor.makeup_api.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +18,8 @@ import java.math.BigDecimal;
 public class ProductController {
 
     private final ProductService productService;
-    private final FileStorageService fileStorageService;
+    // REMOVIDO: private final LocalStorageAdapter fileStorageService; 
+    // O Controller não mexe mais com arquivos diretamente.
 
     @GetMapping
     public ResponseEntity<Page<ProductResponse>> getAllProducts(
@@ -27,10 +27,8 @@ public class ProductController {
             @RequestParam(required = false) BigDecimal minPrice,
             @RequestParam(required = false) BigDecimal maxPrice,
             @RequestParam(required = false) Double minRating,
-            Pageable pageable) {
+            @RequestParam(required = false) Pageable pageable) {
         
-        // CORREÇÃO: O serviço agora já retorna Page<ProductResponse>, 
-        // então não é necessário usar o .map() novamente.
         return ResponseEntity.ok(
             productService.getFilteredProducts(brand, minPrice, maxPrice, minRating, pageable)
         );
@@ -42,11 +40,10 @@ public class ProductController {
     }
 
     @PostMapping("/{id}/upload-image")
-    @Operation(summary = "Upload de foto do produto", description = "Guarda a foto real da maquiagem no servidor.")
+    @Operation(summary = "Upload de foto do produto", description = "Envia a foto para o armazenamento (Local ou Cloudinary).")
     public ResponseEntity<ProductResponse> uploadImage(@PathVariable Long id, @RequestParam("file") MultipartFile file) {
-        String fileName = fileStorageService.saveImage(file);
-        String imageUrl = "/uploads/" + fileName;
-        
-        return ResponseEntity.ok(productService.updateProductImage(id, imageUrl));
+        // CORREÇÃO: Passamos o arquivo direto.
+        // O ProductService vai chamar o Gateway, que decide se salva no Disco ou no Cloudinary.
+        return ResponseEntity.ok(productService.updateProductImage(id, file));
     }
 }
