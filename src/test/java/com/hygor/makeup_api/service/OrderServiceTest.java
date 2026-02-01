@@ -3,7 +3,8 @@ package com.hygor.makeup_api.service;
 import com.hygor.makeup_api.dto.order.OrderItemRequest;
 import com.hygor.makeup_api.dto.order.OrderRequest;
 import com.hygor.makeup_api.dto.shipping.ShippingOptionResponse;
-import com.hygor.makeup_api.gateway.PaymentGateway;
+import com.hygor.makeup_api.exception.custom.InsufficientStockException;
+import com.hygor.makeup_api.exception.custom.ResourceNotFoundException;
 import com.hygor.makeup_api.mapper.OrderMapper;
 import com.hygor.makeup_api.model.*;
 import com.hygor.makeup_api.repository.*;
@@ -38,73 +39,97 @@ class OrderServiceTest {
     @Mock private OrderMapper orderMapper;
 
     @InjectMocks
-    private OrderService orderService; // O Mockito injeta os mocks acima aqui dentro
+    private OrderService orderService;
 
     @Test
-    @DisplayName("Deve criar pedido com sucesso e baixar estoque")
+    @DisplayName("SUCESSO: Deve criar pedido e baixar estoque")
     void shouldCreateOrderSuccessfully() {
-        // --- 1. CENÁRIO (GIVEN) ---
+        // --- GIVEN ---
         String userEmail = "teste@email.com";
         mockSecurityContext(userEmail);
 
-        // Cliente
         User user = new User();
         user.setEmail(userEmail);
         when(userRepository.findByEmail(userEmail)).thenReturn(Optional.of(user));
 
-        // Endereço
         Address address = new Address();
-        address.setZipCode("12345-678");
-        address.setUser(user);
+        address.setZipCode("12345-000");
+        address.setUser(user); // Endereço pertence ao user
         when(addressRepository.findById(1L)).thenReturn(Optional.of(address));
 
-        // Frete Mockado (Não chama Correios nem Adapter!)
         ShippingOptionResponse shipping = new ShippingOptionResponse();
-        shipping.setPrice(new BigDecimal("20.00"));
-        shipping.setName("Sedex");
-        when(shippingService.calculateBestOption("12345-678")).thenReturn(shipping);
+        shipping.setPrice(BigDecimal.TEN);
+        shipping.setName("PAC");
+        when(shippingService.calculateBestOption(any())).thenReturn(shipping);
 
-        // Produto/Variante (Com Lock Mockado)
         Product product = new Product();
-        product.setName("Batom Vermelho");
-        
+        product.setName("Batom");
         ProductVariant variant = new ProductVariant();
         variant.setId(10L);
         variant.setProduct(product);
         variant.setPrice(new BigDecimal("50.00"));
-        variant.setStockQuantity(10); // Tem 10 no estoque
+        variant.setStockQuantity(5); // Tem 5
         
-        // Importante: Simulamos o findByIdWithLock
+        // Simula o LOCK do banco
         when(variantRepository.findByIdWithLock(10L)).thenReturn(Optional.of(variant));
+        when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
 
-        // Request do Usuário
+        // Request
+        OrderRequest request = new OrderRequest();
+        request.setAddressId(1L);
         OrderItemRequest itemReq = new OrderItemRequest();
         itemReq.setVariantId(10L);
         itemReq.setQuantity(2); // Compra 2
-
-        OrderRequest request = new OrderRequest();
-        request.setAddressId(1L);
         request.setItems(List.of(itemReq));
 
-        // Mock do salvamento
-        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
-        // --- 2. AÇÃO (WHEN) ---
+        // --- WHEN ---
         orderService.createOrder(request);
 
-        // --- 3. VERIFICAÇÃO (THEN) ---
-        
-        // Verifica se o estoque baixou de 10 para 8
-        assertEquals(8, variant.getStockQuantity());
-        
-        // Verifica se o variantRepository.save foi chamado (para persistir o estoque novo)
-        verify(variantRepository, times(1)).save(variant);
-        
-        // Verifica se o email de confirmação foi enviado
-        verify(emailService, times(1)).sendOrderConfirmation(any());
+        // --- THEN ---
+        assertEquals(3, variant.getStockQuantity()); // 5 - 2 = 3
+        verify(variantRepository).save(variant); // Salvou estoque novo
+        verify(emailService).sendOrderConfirmation(any()); // Enviou email
     }
 
-    // Método auxiliar para mockar o Usuário Logado (Security Context)
+    @Test
+    @DisplayName("ERRO: Deve lançar exceção se estoque for insuficiente")
+    void shouldThrowException_WhenStockIsInsufficient() {
+        // --- GIVEN ---
+        String userEmail = "teste@email.com";
+        mockSecurityContext(userEmail);
+
+        User user = new User();
+        user.setEmail(userEmail);
+        when(userRepository.findByEmail(userEmail)).thenReturn(Optional.of(user));
+
+        Address address = new Address();
+        address.setUser(user);
+        when(addressRepository.findById(1L)).thenReturn(Optional.of(address));
+        when(shippingService.calculateBestOption(any())).thenReturn(new ShippingOptionResponse());
+
+        Product product = new Product();
+        product.setName("Batom Raro");
+        ProductVariant variant = new ProductVariant();
+        variant.setProduct(product);
+        variant.setStockQuantity(1); // Só tem 1
+        
+        when(variantRepository.findByIdWithLock(10L)).thenReturn(Optional.of(variant));
+
+        // Tenta comprar 5
+        OrderRequest request = new OrderRequest();
+        request.setAddressId(1L);
+        OrderItemRequest itemReq = new OrderItemRequest();
+        itemReq.setVariantId(10L);
+        itemReq.setQuantity(5); 
+        request.setItems(List.of(itemReq));
+
+        // --- WHEN / THEN ---
+        assertThrows(InsufficientStockException.class, () -> orderService.createOrder(request));
+        
+        // Garante que NÃO salvou o pedido
+        verify(orderRepository, never()).save(any());
+    }
+
     private void mockSecurityContext(String email) {
         Authentication authentication = mock(Authentication.class);
         SecurityContext securityContext = mock(SecurityContext.class);
