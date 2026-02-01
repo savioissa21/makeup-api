@@ -1,46 +1,35 @@
 package com.hygor.makeup_api.service;
 
 import com.hygor.makeup_api.dto.shipping.ShippingOptionResponse;
-import com.hygor.makeup_api.mapper.ShippingMapper; // Injeção
-import com.hygor.makeup_api.model.ShippingQuote;
+import com.hygor.makeup_api.exception.custom.BusinessException;
+import com.hygor.makeup_api.gateway.ShippingGateway;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
+import java.util.Comparator;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class ShippingService {
 
-    private final ShippingMapper shippingMapper;
+    private final ShippingGateway shippingGateway; // Injeção da Interface
 
-    /**
-     * Calcula a melhor opção de frete.
-     * Futuramente aqui chamarás a API dos Correios.
-     */
     public ShippingOptionResponse calculateBestOption(String zipCode) {
-        log.info("Calculando frete para o CEP: {}", zipCode);
+        log.info("Solicitando cotação de frete para CEP: {}", zipCode);
 
-        // Lógica de Negócio (Mockada por enquanto, mas isolada no objeto de domínio)
-        ShippingQuote quote = calculateInternalQuote(zipCode);
+        // 1. Delega o cálculo para o adaptador (seja interno, Correios ou Melhor Envio)
+        List<ShippingOptionResponse> options = shippingGateway.calculateShipping(zipCode);
 
-        // O Mapper converte para o DTO de resposta
-        return shippingMapper.toResponse(quote);
-    }
+        if (options == null || options.isEmpty()) {
+            throw new BusinessException("Nenhuma opção de frete disponível para este CEP.");
+        }
 
-    /**
-     * Simula uma lógica de cálculo interna ou chamada externa.
-     */
-    private ShippingQuote calculateInternalQuote(String zipCode) {
-        // Simulação: Se for CEP de SP (começa com 0 ou 1), é mais barato
-        boolean isLocal = zipCode.startsWith("0") || zipCode.startsWith("1");
-        
-        return ShippingQuote.builder()
-                .serviceName("Correios (SEDEX)")
-                .cost(isLocal ? new BigDecimal("15.90") : new BigDecimal("32.50"))
-                .estimatedDays(isLocal ? 2 : 5)
-                .build();
+        // 2. Regra de Negócio: Selecionar a opção mais barata automaticamente
+        return options.stream()
+                .min(Comparator.comparing(ShippingOptionResponse::getPrice))
+                .orElseThrow(() -> new BusinessException("Erro ao selecionar melhor frete."));
     }
 }
