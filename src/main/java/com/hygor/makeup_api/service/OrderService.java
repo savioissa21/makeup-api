@@ -4,6 +4,7 @@ import com.hygor.makeup_api.dto.order.OrderRequest;
 import com.hygor.makeup_api.dto.order.OrderResponse;
 import com.hygor.makeup_api.dto.shipping.ShippingOptionResponse;
 import com.hygor.makeup_api.exception.custom.BusinessException;
+import com.hygor.makeup_api.exception.custom.InsufficientStockException;
 import com.hygor.makeup_api.exception.custom.ResourceNotFoundException;
 import com.hygor.makeup_api.mapper.OrderMapper;
 import com.hygor.makeup_api.model.*;
@@ -77,19 +78,17 @@ public class OrderService extends BaseService<Order, OrderRepository> {
 
         // 3. Processa Itens e Valida Stock (Crítico ⚠️)
         for (var itemRequest : request.getItems()) {
-            ProductVariant variant = variantRepository.findById(itemRequest.getVariantId())
-                    .orElseThrow(() -> new ResourceNotFoundException(
-                            "Variação não encontrada ID: " + itemRequest.getVariantId()));
+            ProductVariant variant = variantRepository.findByIdWithLock(itemRequest.getVariantId())
+                .orElseThrow(() -> new ResourceNotFoundException("Variação não encontrada ID: " + itemRequest.getVariantId()));
 
-            if (variant.getStockQuantity() < itemRequest.getQuantity()) {
-                throw new BusinessException(
-                        "Stock insuficiente para: " + variant.getProduct().getName() + " - " + variant.getName());
-            }
+        if (variant.getStockQuantity() < itemRequest.getQuantity()) {
+            throw new InsufficientStockException("Stock insuficiente para: " + variant.getProduct().getName() + " - " + variant.getName());
+        }
 
-            // Baixa de Stock Atômica
-            int newStock = variant.getStockQuantity() - itemRequest.getQuantity();
-            variant.setStockQuantity(newStock);
-            variantRepository.save(variant);
+        // Baixa de Stock Atômica (Agora segura)
+        int newStock = variant.getStockQuantity() - itemRequest.getQuantity();
+        variant.setStockQuantity(newStock);
+        variantRepository.save(variant);
 
             if (newStock <= 5) {
                 // Async: não trava o pedido
