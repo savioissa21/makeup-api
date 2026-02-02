@@ -3,17 +3,23 @@ package com.hygor.makeup_api.model;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.SQLRestriction;
+import org.hibernate.envers.Audited;
+import org.hibernate.envers.RelationTargetAuditMode;
+
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
 @Entity
+@Audited
 @Table(name = "products", indexes = {
-    @Index(name = "idx_product_slug", columnList = "slug", unique = true)
+        @Index(name = "idx_product_slug", columnList = "slug", unique = true)
 })
 @SQLRestriction("deleted = false")
-@Getter @Setter
-@NoArgsConstructor @AllArgsConstructor
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
 @Builder
 public class Product extends BaseEntity {
 
@@ -32,7 +38,7 @@ public class Product extends BaseEntity {
     @Column(precision = 19, scale = 2)
     private BigDecimal discountPrice;
 
-    // REMOVIDO: stockQuantity como campo persistido 
+    // REMOVIDO: stockQuantity como campo persistido
     // Agora o stock é gerido pelas variantes (SKUs)
 
     private String imageUrl;
@@ -42,10 +48,12 @@ public class Product extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id", nullable = false)
+    @Audited(targetAuditMode = RelationTargetAuditMode.NOT_AUDITED)
     private Category category;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "brand_id", nullable = false)
+    @Audited(targetAuditMode = RelationTargetAuditMode.NOT_AUDITED)
     private Brand brand;
 
     // NOVO: Relacionamento com as Variações (Cores/Tons) 💎

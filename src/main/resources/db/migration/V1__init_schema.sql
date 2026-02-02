@@ -106,7 +106,9 @@ CREATE TABLE users (
     password VARCHAR(255) NOT NULL,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-    secret_mfa VARCHAR(255)
+    secret_mfa VARCHAR(255),
+    reset_token VARCHAR(255),
+    reset_token_expiry TIMESTAMP
 );
 
 -- 2. Tabelas com Dependências (Foreign Keys)
